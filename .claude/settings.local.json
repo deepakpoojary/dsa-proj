@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($r = Invoke-WebRequest -Uri \"http://localhost:3000/api/problems\" -UseBasicParsing -TimeoutSec 20; $r.StatusCode; \\($r.Content | ConvertFrom-Json\\).Count)"
+    ]
+  }
+}

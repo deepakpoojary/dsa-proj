@@ -1,0 +1,284 @@
+{
+  "problems": [
+    {
+      "id": "1",
+      "title": "Two Sum",
+      "slug": "two-sum",
+      "topic": "Arrays",
+      "difficulty": "Easy",
+      "description": "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume each input has exactly one solution and you may not use the same element twice.",
+      "examples": [
+        {
+          "input": "nums = [2, 7, 11, 15], target = 9",
+          "output": "[0, 1]",
+          "explanation": "nums[0] + nums[1] = 2 + 7 = 9"
+        },
+        {
+          "input": "nums = [3, 2, 4], target = 6",
+          "output": "[1, 2]"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Check every pair of elements to see if they sum to target. Two nested loops iterate over all combinations.",
+        "code": "#include <vector>\nusing namespace std;\n\nvector<int> twoSum(vector<int>& nums, int target) {\n    int n = nums.size();\n    for (int i = 0; i < n; i++) {\n        for (int j = i + 1; j < n; j++) {\n            if (nums[i] + nums[j] == target)\n                return {i, j};\n        }\n    }\n    return {};\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n²)",
+        "spaceComplexity": "O(1)"
+      },
+      "optimal": {
+        "explanation": "Use an unordered_map to store each number and its index. For each number, check if its complement (target - num) already exists in the map — giving O(1) lookup instead of a full scan.",
+        "code": "#include <vector>\n#include <unordered_map>\nusing namespace std;\n\nvector<int> twoSum(vector<int>& nums, int target) {\n    unordered_map<int, int> seen;\n    for (int i = 0; i < nums.size(); i++) {\n        int complement = target - nums[i];\n        if (seen.count(complement))\n            return {seen[complement], i};\n        seen[nums[i]] = i;\n    }\n    return {};\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      },
+      "createdAt": "2024-01-01"
+    },
+    {
+      "id": "2",
+      "title": "Valid Parentheses",
+      "slug": "valid-parentheses",
+      "topic": "Stack",
+      "difficulty": "Easy",
+      "description": "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid. Open brackets must be closed by the same type of brackets in the correct order.",
+      "examples": [
+        {
+          "input": "s = \"()[]{}\"",
+          "output": "true"
+        },
+        {
+          "input": "s = \"(]\"",
+          "output": "false"
+        },
+        {
+          "input": "s = \"([)]\"",
+          "output": "false"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Repeatedly find and remove matched pairs () [] {} from the string until no more are found, then check if the result is empty.",
+        "code": "#include <string>\nusing namespace std;\n\nbool isValid(string s) {\n    while (s.find(\"()\") != string::npos ||\n           s.find(\"[]\") != string::npos ||\n           s.find(\"{}\") != string::npos) {\n        size_t p;\n        if ((p = s.find(\"()\")) != string::npos) s.erase(p, 2);\n        if ((p = s.find(\"[]\")) != string::npos) s.erase(p, 2);\n        if ((p = s.find(\"{}\")) != string::npos) s.erase(p, 2);\n    }\n    return s.empty();\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n²)",
+        "spaceComplexity": "O(n)"
+      },
+      "optimal": {
+        "explanation": "Use a stack. Push opening brackets. For each closing bracket, check if the stack top is the matching opening — if so pop, otherwise return false.",
+        "code": "#include <string>\n#include <stack>\n#include <unordered_map>\nusing namespace std;\n\nbool isValid(string s) {\n    stack<char> st;\n    unordered_map<char, char> pairs = {{')', '('}, {']', '['}, {'}', '{'}};\n    for (char c : s) {\n        if (c == '(' || c == '[' || c == '{')\n            st.push(c);\n        else if (st.empty() || st.top() != pairs[c])\n            return false;\n        else\n            st.pop();\n    }\n    return st.empty();\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      },
+      "createdAt": "2024-01-02"
+    },
+    {
+      "id": "3",
+      "title": "Maximum Subarray",
+      "slug": "maximum-subarray",
+      "topic": "Dynamic Programming",
+      "difficulty": "Medium",
+      "description": "Given an integer array nums, find the subarray with the largest sum and return its sum.",
+      "examples": [
+        {
+          "input": "nums = [-2, 1, -3, 4, -1, 2, 1, -5, 4]",
+          "output": "6",
+          "explanation": "Subarray [4, -1, 2, 1] has the largest sum = 6"
+        },
+        {
+          "input": "nums = [1]",
+          "output": "1"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Try all possible subarrays using two nested loops. For each starting index, accumulate the sum and track the maximum found.",
+        "code": "#include <vector>\n#include <climits>\nusing namespace std;\n\nint maxSubArray(vector<int>& nums) {\n    int maxSum = INT_MIN;\n    for (int i = 0; i < nums.size(); i++) {\n        int currentSum = 0;\n        for (int j = i; j < nums.size(); j++) {\n            currentSum += nums[j];\n            maxSum = max(maxSum, currentSum);\n        }\n    }\n    return maxSum;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n²)",
+        "spaceComplexity": "O(1)"
+      },
+      "optimal": {
+        "explanation": "Kadane's Algorithm: at each position decide whether to extend the running sum or start fresh. currentSum = max(num, currentSum + num). Track the global max throughout.",
+        "code": "#include <vector>\nusing namespace std;\n\nint maxSubArray(vector<int>& nums) {\n    int maxSum = nums[0];\n    int currentSum = nums[0];\n    for (int i = 1; i < nums.size(); i++) {\n        currentSum = max(nums[i], currentSum + nums[i]);\n        maxSum = max(maxSum, currentSum);\n    }\n    return maxSum;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(1)"
+      },
+      "createdAt": "2024-01-03"
+    },
+    {
+      "id": "4",
+      "title": "Binary Search",
+      "slug": "binary-search",
+      "topic": "Arrays",
+      "difficulty": "Easy",
+      "description": "Given a sorted array of integers and a target value, return the index of the target if found, otherwise return -1.",
+      "examples": [
+        {
+          "input": "nums = [-1, 0, 3, 5, 9, 12], target = 9",
+          "output": "4",
+          "explanation": "9 exists at index 4"
+        },
+        {
+          "input": "nums = [-1, 0, 3, 5, 9, 12], target = 2",
+          "output": "-1"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Linear search: iterate through every element and compare with the target.",
+        "code": "#include <vector>\nusing namespace std;\n\nint search(vector<int>& nums, int target) {\n    for (int i = 0; i < nums.size(); i++) {\n        if (nums[i] == target)\n            return i;\n    }\n    return -1;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(1)"
+      },
+      "optimal": {
+        "explanation": "Binary search: maintain left/right pointers. At each step check the midpoint — if target found return it; if mid < target move left right; if mid > target move right left.",
+        "code": "#include <vector>\nusing namespace std;\n\nint search(vector<int>& nums, int target) {\n    int left = 0, right = nums.size() - 1;\n    while (left <= right) {\n        int mid = left + (right - left) / 2;\n        if (nums[mid] == target)\n            return mid;\n        else if (nums[mid] < target)\n            left = mid + 1;\n        else\n            right = mid - 1;\n    }\n    return -1;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(log n)",
+        "spaceComplexity": "O(1)"
+      },
+      "createdAt": "2024-01-04"
+    },
+    {
+      "id": "5",
+      "title": "Longest Substring Without Repeating Characters",
+      "slug": "longest-substring-without-repeating",
+      "topic": "Sliding Window",
+      "difficulty": "Medium",
+      "description": "Given a string s, find the length of the longest substring without duplicate characters.",
+      "examples": [
+        {
+          "input": "s = \"abcabcbb\"",
+          "output": "3",
+          "explanation": "Substring \"abc\" has length 3"
+        },
+        {
+          "input": "s = \"bbbbb\"",
+          "output": "1",
+          "explanation": "Substring \"b\" has length 1"
+        },
+        {
+          "input": "s = \"pwwkew\"",
+          "output": "3",
+          "explanation": "Substring \"wke\" has length 3"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Try all substrings starting from each index. For each, track characters in a set and stop when a duplicate is encountered.",
+        "code": "#include <string>\n#include <unordered_set>\nusing namespace std;\n\nint lengthOfLongestSubstring(string s) {\n    int maxLen = 0;\n    for (int i = 0; i < s.size(); i++) {\n        unordered_set<char> seen;\n        for (int j = i; j < s.size(); j++) {\n            if (seen.count(s[j])) break;\n            seen.insert(s[j]);\n            maxLen = max(maxLen, j - i + 1);\n        }\n    }\n    return maxLen;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n²)",
+        "spaceComplexity": "O(min(n, m))"
+      },
+      "optimal": {
+        "explanation": "Sliding window with a hash map storing last seen index. When a duplicate is found, jump the left pointer past the previous occurrence instead of starting over.",
+        "code": "#include <string>\n#include <unordered_map>\nusing namespace std;\n\nint lengthOfLongestSubstring(string s) {\n    unordered_map<char, int> seen;\n    int left = 0, maxLen = 0;\n    for (int right = 0; right < s.size(); right++) {\n        if (seen.count(s[right]) && seen[s[right]] >= left)\n            left = seen[s[right]] + 1;\n        seen[s[right]] = right;\n        maxLen = max(maxLen, right - left + 1);\n    }\n    return maxLen;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(min(n, m))"
+      },
+      "createdAt": "2024-01-05"
+    },
+    {
+      "id": "6",
+      "title": "Climbing Stairs",
+      "slug": "climbing-stairs",
+      "topic": "Dynamic Programming",
+      "difficulty": "Easy",
+      "description": "You are climbing a staircase with n steps. Each time you can either climb 1 or 2 steps. In how many distinct ways can you climb to the top?",
+      "examples": [
+        {
+          "input": "n = 2",
+          "output": "2",
+          "explanation": "Two ways: (1+1) or (2)"
+        },
+        {
+          "input": "n = 3",
+          "output": "3",
+          "explanation": "Three ways: (1+1+1), (1+2), (2+1)"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Recursive approach: total ways = ways(n-1) + ways(n-2). Exponential time due to overlapping subproblems.",
+        "code": "#include <iostream>\nusing namespace std;\n\nint climbStairs(int n) {\n    if (n <= 2) return n;\n    return climbStairs(n - 1) + climbStairs(n - 2);\n}",
+        "language": "cpp",
+        "timeComplexity": "O(2ⁿ)",
+        "spaceComplexity": "O(n)"
+      },
+      "optimal": {
+        "explanation": "This is the Fibonacci sequence. Track only the previous two values and compute iteratively — no recursion, no extra array needed.",
+        "code": "#include <iostream>\nusing namespace std;\n\nint climbStairs(int n) {\n    if (n <= 2) return n;\n    int prev1 = 1, prev2 = 2;\n    for (int i = 3; i <= n; i++) {\n        int curr = prev1 + prev2;\n        prev1 = prev2;\n        prev2 = curr;\n    }\n    return prev2;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(1)"
+      },
+      "createdAt": "2024-01-06"
+    },
+    {
+      "id": "7",
+      "title": "Reverse Linked List",
+      "slug": "reverse-linked-list",
+      "topic": "Linked List",
+      "difficulty": "Easy",
+      "description": "Given the head of a singly linked list, reverse the list and return the reversed list.",
+      "examples": [
+        {
+          "input": "head = [1, 2, 3, 4, 5]",
+          "output": "[5, 4, 3, 2, 1]"
+        },
+        {
+          "input": "head = [1, 2]",
+          "output": "[2, 1]"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Collect all node values into a vector, reverse it, then rebuild the linked list from scratch.",
+        "code": "struct ListNode {\n    int val;\n    ListNode* next;\n    ListNode(int x) : val(x), next(nullptr) {}\n};\n\nListNode* reverseList(ListNode* head) {\n    vector<int> vals;\n    ListNode* curr = head;\n    while (curr) {\n        vals.push_back(curr->val);\n        curr = curr->next;\n    }\n    ListNode dummy(0);\n    curr = &dummy;\n    for (int i = vals.size() - 1; i >= 0; i--) {\n        curr->next = new ListNode(vals[i]);\n        curr = curr->next;\n    }\n    return dummy.next;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      },
+      "optimal": {
+        "explanation": "Iterate through the list reversing each node's next pointer in-place using prev and curr pointers. No extra space needed.",
+        "code": "struct ListNode {\n    int val;\n    ListNode* next;\n    ListNode(int x) : val(x), next(nullptr) {}\n};\n\nListNode* reverseList(ListNode* head) {\n    ListNode* prev = nullptr;\n    ListNode* curr = head;\n    while (curr) {\n        ListNode* nextNode = curr->next;\n        curr->next = prev;\n        prev = curr;\n        curr = nextNode;\n    }\n    return prev;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(1)"
+      },
+      "createdAt": "2024-01-07"
+    },
+    {
+      "id": "8",
+      "title": "Contains Duplicate",
+      "slug": "contains-duplicate",
+      "topic": "Arrays",
+      "difficulty": "Easy",
+      "description": "Given an integer array nums, return true if any value appears at least twice, and false if every element is distinct.",
+      "examples": [
+        {
+          "input": "nums = [1, 2, 3, 1]",
+          "output": "true"
+        },
+        {
+          "input": "nums = [1, 2, 3, 4]",
+          "output": "false"
+        }
+      ],
+      "bruteForce": {
+        "explanation": "Compare every pair of elements using nested loops. If any two are equal, return true.",
+        "code": "#include <vector>\nusing namespace std;\n\nbool containsDuplicate(vector<int>& nums) {\n    for (int i = 0; i < nums.size(); i++) {\n        for (int j = i + 1; j < nums.size(); j++) {\n            if (nums[i] == nums[j])\n                return true;\n        }\n    }\n    return false;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n²)",
+        "spaceComplexity": "O(1)"
+      },
+      "optimal": {
+        "explanation": "Use an unordered_set. As we iterate, if the current element is already in the set return true, otherwise insert it.",
+        "code": "#include <vector>\n#include <unordered_set>\nusing namespace std;\n\nbool containsDuplicate(vector<int>& nums) {\n    unordered_set<int> seen;\n    for (int num : nums) {\n        if (seen.count(num))\n            return true;\n        seen.insert(num);\n    }\n    return false;\n}",
+        "language": "cpp",
+        "timeComplexity": "O(n)",
+        "spaceComplexity": "O(n)"
+      },
+      "createdAt": "2024-01-08"
+    }
+  ]
+}
