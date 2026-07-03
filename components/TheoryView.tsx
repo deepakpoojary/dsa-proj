@@ -147,7 +147,7 @@ export default function TheoryView({ data: initialData }: { data: TheoryData }) 
           onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
           onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
         >
-          ← DSA Problems
+          ← DSA ProblemS
         </a>
 
         {/* Edit mode */}
