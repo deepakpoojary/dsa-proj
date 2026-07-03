@@ -44,6 +44,16 @@ function problemToRow(p: Problem) {
   };
 }
 
+export async function getProblem(id: string): Promise<Problem | null> {
+  const { data, error } = await supabase
+    .from('problems')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error || !data) return null;
+  return rowToProblem(data as DbRow);
+}
+
 export async function getProblems(): Promise<Problem[]> {
   const { data, error } = await supabase
     .from('problems')

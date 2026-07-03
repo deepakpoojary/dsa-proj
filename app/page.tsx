@@ -2,7 +2,7 @@ import { getProblems } from '@/lib/data';
 import { highlight } from '@/lib/highlight';
 import ProblemsView from '@/components/ProblemsView';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 export default async function Home() {
   const problems = await getProblems();
