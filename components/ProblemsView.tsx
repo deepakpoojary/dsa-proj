@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
 import { EnrichedProblem } from '@/types';
 import ProblemCard from './ProblemCard';
+import UserNav from './UserNav';
 
 function topicId(topic: string) {
   return `topic-${topic.toLowerCase().replace(/\s+/g, '-')}`;
@@ -29,11 +30,30 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 
 const SCROLL_KEY = 'dsa_scroll_pos';
 
-export default function ProblemsView({ problems: initialProblems }: { problems: EnrichedProblem[] }) {
+export default function ProblemsView({
+  problems: initialProblems,
+  topicOrder,
+  email,
+  hasPaid,
+  isAdmin,
+}: {
+  problems: EnrichedProblem[];
+  topicOrder: string[];
+  email: string | null;
+  hasPaid: boolean;
+  isAdmin: boolean;
+}) {
   const [problems, setProblems] = useState(initialProblems);
   const [query, setQuery] = useState('');
-  const [editMode, setEditMode] = useState(true);
+  const [editMode, setEditMode] = useState(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Re-sync when the server re-renders this tree (e.g. router.refresh() after
+  // checkout) — otherwise this client component's local state keeps the stale
+  // locked/unlocked snapshot from the initial mount.
+  useEffect(() => {
+    setProblems(initialProblems);
+  }, [initialProblems]);
 
   // Scroll persistence
   useEffect(() => {
@@ -67,16 +87,34 @@ export default function ProblemsView({ problems: initialProblems }: { problems: 
     return fuse.search(query).map((r) => r.item);
   }, [query, fuse, problems]);
 
+  const topicRank = useMemo(() => {
+    const map = new Map<string, number>();
+    topicOrder.forEach((t, i) => map.set(t, i));
+    return map;
+  }, [topicOrder]);
+
+  const byTopicOrder = useCallback(
+    (a: string, b: string) => {
+      const ra = topicRank.has(a) ? topicRank.get(a)! : Infinity;
+      const rb = topicRank.has(b) ? topicRank.get(b)! : Infinity;
+      return ra - rb;
+    },
+    [topicRank]
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, EnrichedProblem[]>();
     for (const p of filtered) {
       if (!map.has(p.topic)) map.set(p.topic, []);
       map.get(p.topic)!.push(p);
     }
-    return map;
-  }, [filtered]);
+    return new Map([...map.entries()].sort((a, b) => byTopicOrder(a[0], b[0])));
+  }, [filtered, byTopicOrder]);
 
-  const allTopics = useMemo(() => Array.from(new Set(problems.map((p) => p.topic))), [problems]);
+  const allTopics = useMemo(
+    () => Array.from(new Set(problems.map((p) => p.topic))).sort(byTopicOrder),
+    [problems, byTopicOrder]
+  );
   const visibleTopics = Array.from(grouped.keys());
 
   return (
@@ -112,21 +150,26 @@ export default function ProblemsView({ problems: initialProblems }: { problems: 
           </a>
         </div>
 
-        {/* Edit mode toggle */}
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '8px 10px', borderRadius: '8px',
-            background: editMode ? 'rgba(88,166,255,0.08)' : '#161b22',
-            border: `1px solid ${editMode ? 'rgba(88,166,255,0.3)' : '#30363d'}`,
-            transition: 'all 0.2s',
-          }}
-        >
-          <span style={{ fontSize: '0.8rem', color: editMode ? '#58a6ff' : '#8b949e', fontWeight: 500 }}>
-            ✏ Edit Mode
-          </span>
-          <Toggle checked={editMode} onChange={() => setEditMode((e) => !e)} />
-        </div>
+        {/* Auth / account */}
+        <UserNav email={email} hasPaid={hasPaid} />
+
+        {/* Edit mode toggle — admin only */}
+        {isAdmin && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 10px', borderRadius: '8px',
+              background: editMode ? 'rgba(88,166,255,0.08)' : '#161b22',
+              border: `1px solid ${editMode ? 'rgba(88,166,255,0.3)' : '#30363d'}`,
+              transition: 'all 0.2s',
+            }}
+          >
+            <span style={{ fontSize: '0.8rem', color: editMode ? '#58a6ff' : '#8b949e', fontWeight: 500 }}>
+              ✏ Edit Mode
+            </span>
+            <Toggle checked={editMode} onChange={() => setEditMode((e) => !e)} />
+          </div>
+        )}
 
         {/* Search */}
         <div style={{ position: 'relative' }}>
@@ -234,7 +277,8 @@ export default function ProblemsView({ problems: initialProblems }: { problems: 
                   key={problem.id}
                   problem={problem}
                   index={i}
-                  editMode={editMode}
+                  editMode={editMode && isAdmin}
+                  locked={problem.isLocked}
                   onUpdate={handleUpdate}
                 />
               ))}

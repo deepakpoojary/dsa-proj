@@ -18,11 +18,13 @@ export default function ProblemCard({
   problem: initialProblem,
   index,
   editMode,
+  locked = false,
   onUpdate,
 }: {
   problem: EnrichedProblem;
   index: number;
   editMode: boolean;
+  locked?: boolean;
   onUpdate: (updated: EnrichedProblem) => void;
 }) {
   const [tab, setTab] = useState<'brute' | 'optimal'>('brute');
@@ -166,110 +168,129 @@ export default function ProblemCard({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex border-b border-[#30363d] px-5">
-        <button
-          onClick={() => { setTab('brute'); localStorage.setItem(`tab_${problem.id}`, 'brute'); }}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'brute'
-              ? 'border-[#f85149] text-[#f85149]'
-              : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
-          }`}
-        >
-          Brute Force
-        </button>
-        <button
-          onClick={() => { setTab('optimal'); localStorage.setItem(`tab_${problem.id}`, 'optimal'); }}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            tab === 'optimal'
-              ? 'border-[#3fb950] text-[#3fb950]'
-              : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
-          }`}
-        >
-          ✦ Optimal
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      <div className="p-5">
-        {/* Approach */}
-        {editMode ? (
-          <textarea
-            key={`${problem.id}-${tab}-explanation`}
-            ref={explanationRef}
-            defaultValue={content.explanation}
-            onBlur={handleExplanationBlur}
-            onChange={(e) => autoResize(e.target)}
-            onFocus={(e) => autoResize(e.target)}
-            rows={2}
-            placeholder="Explain the approach..."
-            className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg text-[#8b949e] text-sm p-3 mb-4 leading-relaxed resize-none outline-none"
-            style={{ overflow: 'hidden', fontFamily: 'inherit' }}
-          />
-        ) : (
-          <p className="text-sm text-[#8b949e] mb-4 leading-relaxed">
-            <span className="text-[#e6edf3] font-medium">Approach: </span>
-            {content.explanation}
-          </p>
-        )}
-
-        {/* Code */}
-        {editMode ? (
-          <textarea
-            key={`${problem.id}-${tab}-code`}
-            ref={codeRef}
-            defaultValue={content.code}
-            onBlur={handleCodeBlur}
-            onChange={(e) => autoResize(e.target)}
-            onFocus={(e) => autoResize(e.target)}
-            rows={8}
-            placeholder="// C++ code here"
-            className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg text-[#e6edf3] text-xs p-4 mb-4 resize-none outline-none"
-            style={{ overflow: 'hidden', fontFamily: 'ui-monospace, monospace', lineHeight: '1.6' }}
-          />
-        ) : (
-          <div
-            className="rounded-lg border border-[#30363d] overflow-hidden mb-4 [&_.shiki]:!m-0 [&_.shiki_code]:!p-4 [&_.shiki]:overflow-x-auto"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
-
-        {/* Complexity */}
-        <div className="flex gap-5">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#8b949e] text-xs">Time</span>
-            {editMode ? (
-              <input
-                key={`${problem.id}-${tab}-time`}
-                ref={timeRef}
-                defaultValue={content.timeComplexity}
-                onBlur={handleTimeBlur}
-                className="w-24 text-xs bg-[#0d1117] text-[#58a6ff] px-2 py-0.5 rounded font-mono border border-[#30363d] outline-none"
-              />
-            ) : (
-              <code className="text-xs bg-[#0d1117] text-[#58a6ff] px-2 py-0.5 rounded font-mono border border-[#30363d]">
-                {content.timeComplexity}
-              </code>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#8b949e] text-xs">Space</span>
-            {editMode ? (
-              <input
-                key={`${problem.id}-${tab}-space`}
-                ref={spaceRef}
-                defaultValue={content.spaceComplexity}
-                onBlur={handleSpaceBlur}
-                className="w-24 text-xs bg-[#0d1117] text-[#3fb950] px-2 py-0.5 rounded font-mono border border-[#30363d] outline-none"
-              />
-            ) : (
-              <code className="text-xs bg-[#0d1117] text-[#3fb950] px-2 py-0.5 rounded font-mono border border-[#30363d]">
-                {content.spaceComplexity}
-              </code>
-            )}
+      {locked ? (
+        <div className="p-5">
+          <div className="rounded-lg border border-[#30363d] bg-[#0d1117] p-6 flex flex-col items-center text-center gap-3">
+            <div className="text-2xl">🔒</div>
+            <p className="text-sm text-[#8b949e] max-w-xs">
+              Brute force &amp; optimal solutions for this topic are part of the paid unlock.
+            </p>
+            <a
+              href="/#checkout"
+              className="text-xs font-semibold px-4 py-2 rounded-lg bg-[#238636] text-white hover:opacity-90 transition-opacity"
+            >
+              Unlock full access
+            </a>
           </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Tabs */}
+          <div className="flex border-b border-[#30363d] px-5">
+            <button
+              onClick={() => { setTab('brute'); localStorage.setItem(`tab_${problem.id}`, 'brute'); }}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === 'brute'
+                  ? 'border-[#f85149] text-[#f85149]'
+                  : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
+              }`}
+            >
+              Brute Force
+            </button>
+            <button
+              onClick={() => { setTab('optimal'); localStorage.setItem(`tab_${problem.id}`, 'optimal'); }}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === 'optimal'
+                  ? 'border-[#3fb950] text-[#3fb950]'
+                  : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
+              }`}
+            >
+              ✦ Optimal
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-5">
+            {/* Approach */}
+            {editMode ? (
+              <textarea
+                key={`${problem.id}-${tab}-explanation`}
+                ref={explanationRef}
+                defaultValue={content.explanation}
+                onBlur={handleExplanationBlur}
+                onChange={(e) => autoResize(e.target)}
+                onFocus={(e) => autoResize(e.target)}
+                rows={2}
+                placeholder="Explain the approach..."
+                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg text-[#8b949e] text-sm p-3 mb-4 leading-relaxed resize-none outline-none"
+                style={{ overflow: 'hidden', fontFamily: 'inherit' }}
+              />
+            ) : (
+              <p className="text-sm text-[#8b949e] mb-4 leading-relaxed">
+                <span className="text-[#e6edf3] font-medium">Approach: </span>
+                {content.explanation}
+              </p>
+            )}
+
+            {/* Code */}
+            {editMode ? (
+              <textarea
+                key={`${problem.id}-${tab}-code`}
+                ref={codeRef}
+                defaultValue={content.code}
+                onBlur={handleCodeBlur}
+                onChange={(e) => autoResize(e.target)}
+                onFocus={(e) => autoResize(e.target)}
+                rows={8}
+                placeholder="// C++ code here"
+                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg text-[#e6edf3] text-xs p-4 mb-4 resize-none outline-none"
+                style={{ overflow: 'hidden', fontFamily: 'ui-monospace, monospace', lineHeight: '1.6' }}
+              />
+            ) : (
+              <div
+                className="rounded-lg border border-[#30363d] overflow-hidden mb-4 [&_.shiki]:!m-0 [&_.shiki_code]:!p-4 [&_.shiki]:overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+            )}
+
+            {/* Complexity */}
+            <div className="flex gap-5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#8b949e] text-xs">Time</span>
+                {editMode ? (
+                  <input
+                    key={`${problem.id}-${tab}-time`}
+                    ref={timeRef}
+                    defaultValue={content.timeComplexity}
+                    onBlur={handleTimeBlur}
+                    className="w-24 text-xs bg-[#0d1117] text-[#58a6ff] px-2 py-0.5 rounded font-mono border border-[#30363d] outline-none"
+                  />
+                ) : (
+                  <code className="text-xs bg-[#0d1117] text-[#58a6ff] px-2 py-0.5 rounded font-mono border border-[#30363d]">
+                    {content.timeComplexity}
+                  </code>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#8b949e] text-xs">Space</span>
+                {editMode ? (
+                  <input
+                    key={`${problem.id}-${tab}-space`}
+                    ref={spaceRef}
+                    defaultValue={content.spaceComplexity}
+                    onBlur={handleSpaceBlur}
+                    className="w-24 text-xs bg-[#0d1117] text-[#3fb950] px-2 py-0.5 rounded font-mono border border-[#30363d] outline-none"
+                  />
+                ) : (
+                  <code className="text-xs bg-[#0d1117] text-[#3fb950] px-2 py-0.5 rounded font-mono border border-[#30363d]">
+                    {content.spaceComplexity}
+                  </code>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

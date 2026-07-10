@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 import { Problem } from '@/types';
 
+export const FREE_TOPIC_COUNT = 2;
+
 type DbRow = {
   id: string;
   title: string;
@@ -62,6 +64,18 @@ export async function getProblems(): Promise<Problem[]> {
 
   if (error) throw new Error(error.message);
   return (data as DbRow[]).map(rowToProblem);
+}
+
+// Ordered topic list driving which topics are free. A topic missing from
+// `problem_topics` sorts last (locked) rather than failing open.
+export async function getProblemTopics(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('problem_topics')
+    .select('name')
+    .order('sort_order', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data as { name: string }[]).map((row) => row.name);
 }
 
 export async function insertProblem(p: Problem): Promise<void> {

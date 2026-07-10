@@ -32,4 +32,5 @@ export interface Problem {
 export interface EnrichedProblem extends Problem {
   bruteHtml: string;
   optimalHtml: string;
+  isLocked: boolean;
 }
