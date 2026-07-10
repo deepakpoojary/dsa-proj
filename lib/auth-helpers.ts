@@ -25,3 +25,14 @@ export async function isAdminSession(): Promise<boolean> {
   const cookieStore = await cookies();
   return cookieStore.get('admin_session')?.value === 'authenticated';
 }
+
+export async function getSolvedProblemIds(userId: string | undefined): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const { data } = await adminSupabase
+    .from('user_progress')
+    .select('problem_id')
+    .eq('user_id', userId);
+
+  return new Set((data ?? []).map((row) => row.problem_id as string));
+}

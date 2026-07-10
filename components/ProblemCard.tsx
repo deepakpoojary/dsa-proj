@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { EnrichedProblem, Example } from '@/types';
+import { EnrichedProblem, Example, rewardFor } from '@/types';
 
 const difficultyStyle: Record<string, string> = {
   Easy: 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/30',
@@ -19,13 +19,17 @@ export default function ProblemCard({
   index,
   editMode,
   locked = false,
+  canTrackProgress,
   onUpdate,
+  onToggleSolved,
 }: {
   problem: EnrichedProblem;
   index: number;
   editMode: boolean;
   locked?: boolean;
+  canTrackProgress: boolean;
   onUpdate: (updated: EnrichedProblem) => void;
+  onToggleSolved: (problemId: string, solved: boolean) => void;
 }) {
   const [tab, setTab] = useState<'brute' | 'optimal'>('brute');
   useEffect(() => {
@@ -98,6 +102,16 @@ export default function ProblemCard({
     if (val !== content.spaceComplexity) save({ [key]: { spaceComplexity: val } });
   }, [tab, content.spaceComplexity, save]);
 
+  const reward = rewardFor(problem);
+
+  const handleToggleSolved = useCallback(
+    (checked: boolean) => {
+      setProblem((prev) => ({ ...prev, solved: checked }));
+      onToggleSolved(problem.id, checked);
+    },
+    [problem.id, onToggleSolved]
+  );
+
   return (
     <div
       id={`problem-${problem.slug}`}
@@ -115,6 +129,33 @@ export default function ProblemCard({
         <div className="flex gap-2 flex-wrap items-center">
           {saving && <span className="text-[#8b949e] text-xs">saving…</span>}
           {saved && <span className="text-[#3fb950] text-xs">✓ saved</span>}
+          {!locked && (
+            canTrackProgress ? (
+              <label
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full border font-medium cursor-pointer transition-colors ${
+                  problem.solved
+                    ? 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/30'
+                    : 'text-[#d29922] bg-[#d29922]/10 border-[#d29922]/30'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={problem.solved}
+                  onChange={(e) => handleToggleSolved(e.target.checked)}
+                  className="accent-current"
+                />
+                +₹{reward}
+              </label>
+            ) : (
+              <a
+                href="/login"
+                title="Log in to track progress and earn rewards"
+                className="text-xs px-2.5 py-0.5 rounded-full border font-medium text-[#d29922] bg-[#d29922]/10 border-[#d29922]/30 no-underline"
+              >
+                +₹{reward}
+              </a>
+            )
+          )}
           <span className={`text-xs px-2.5 py-0.5 rounded-full border font-medium ${difficultyStyle[problem.difficulty]}`}>
             {problem.difficulty}
           </span>

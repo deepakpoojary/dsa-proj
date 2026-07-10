@@ -34,4 +34,12 @@ export interface EnrichedProblem extends Problem {
   bruteHtml: string;
   optimalHtml: string;
   isLocked: boolean;
+  solved: boolean;
+}
+
+export const REWARD_TOP150 = 1000;
+export const REWARD_REGULAR = 500;
+
+export function rewardFor(problem: Pick<Problem, 'isTop150'>): number {
+  return problem.isTop150 ? REWARD_TOP150 : REWARD_REGULAR;
 }

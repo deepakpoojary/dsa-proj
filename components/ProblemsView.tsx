@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Fuse from 'fuse.js';
-import { EnrichedProblem } from '@/types';
+import { EnrichedProblem, rewardFor } from '@/types';
 import ProblemCard from './ProblemCard';
 import UserNav from './UserNav';
 
@@ -78,6 +78,23 @@ export default function ProblemsView({
   const handleUpdate = useCallback((updated: EnrichedProblem) => {
     setProblems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }, []);
+
+  const handleToggleSolved = useCallback((problemId: string, solved: boolean) => {
+    setProblems((prev) => prev.map((p) => (p.id === problemId ? { ...p, solved } : p)));
+    fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problemId, solved }),
+    }).catch(() => {
+      // Revert on network failure
+      setProblems((prev) => prev.map((p) => (p.id === problemId ? { ...p, solved: !solved } : p)));
+    });
+  }, []);
+
+  const totalEarned = useMemo(
+    () => problems.filter((p) => p.solved).reduce((sum, p) => sum + rewardFor(p), 0),
+    [problems]
+  );
 
   const scoped = useMemo(() => {
     return problems.filter(
@@ -158,6 +175,21 @@ export default function ProblemsView({
           >
             📖 Theory Q&amp;A
           </a>
+        </div>
+
+        {/* Total earned counter */}
+        <div
+          style={{
+            padding: '10px 12px', borderRadius: '8px',
+            background: 'rgba(63,185,80,0.08)', border: '1px solid rgba(63,185,80,0.3)',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Total Earned
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#3fb950' }}>
+            ₹{totalEarned.toLocaleString('en-IN')}
+          </div>
         </div>
 
         {/* Auth / account */}
@@ -349,7 +381,9 @@ export default function ProblemsView({
                   index={i}
                   editMode={editMode && isAdmin}
                   locked={problem.isLocked}
+                  canTrackProgress={!!email}
                   onUpdate={handleUpdate}
+                  onToggleSolved={handleToggleSolved}
                 />
               ))}
             </section>

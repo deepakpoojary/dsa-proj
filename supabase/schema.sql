@@ -71,3 +71,28 @@ on conflict (name) do update set sort_order = excluded.sort_order;
 -- Hand-curated flag marking the ~150 most classic/interview-relevant
 -- problems, used to drive a "Top 150" filter on top of the full list.
 alter table problems add column if not exists is_top150 boolean not null default false;
+
+-- ── user_progress ────────────────────────────────────────────────────────
+-- Per-user "solved" checkbox state. Existence of a row = solved. Reward
+-- amount (₹500 / ₹1000) is derived from problems.is_top150 in app code,
+-- not stored here, so changing the reward tier never requires a backfill.
+create table if not exists user_progress (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  problem_id text not null references problems(id) on delete cascade,
+  solved_at timestamptz not null default now(),
+  primary key (user_id, problem_id)
+);
+
+alter table user_progress enable row level security;
+
+drop policy if exists "user_progress_select_own" on user_progress;
+create policy "user_progress_select_own" on user_progress
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_progress_insert_own" on user_progress;
+create policy "user_progress_insert_own" on user_progress
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_progress_delete_own" on user_progress;
+create policy "user_progress_delete_own" on user_progress
+  for delete using (auth.uid() = user_id);

@@ -1,6 +1,6 @@
 import { getProblems, getProblemTopics, FREE_TOPIC_COUNT } from '@/lib/data';
 import { highlight } from '@/lib/highlight';
-import { getCurrentUser, getIsPaidUser, isAdminSession } from '@/lib/auth-helpers';
+import { getCurrentUser, getIsPaidUser, isAdminSession, getSolvedProblemIds } from '@/lib/auth-helpers';
 import ProblemsView from '@/components/ProblemsView';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,8 @@ export default async function Home() {
     isAdminSession(),
   ]);
 
+  const solvedIds = await getSolvedProblemIds(user?.id);
+
   const freeTopics = new Set(topicOrder.slice(0, FREE_TOPIC_COUNT));
   const unlocked = hasPaid || isAdmin;
 
@@ -23,6 +25,7 @@ export default async function Home() {
       bruteHtml: await highlight(p.bruteForce.code, p.bruteForce.language),
       optimalHtml: await highlight(p.optimal.code, p.optimal.language),
       isLocked: !unlocked && !freeTopics.has(p.topic),
+      solved: solvedIds.has(p.id),
     }))
   );
 
