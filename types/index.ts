@@ -27,6 +27,7 @@ export interface Problem {
     spaceComplexity: string;
   };
   createdAt: string;
+  isTop150: boolean;
 }
 
 export interface EnrichedProblem extends Problem {

@@ -14,6 +14,7 @@ type DbRow = {
   brute_force: Problem['bruteForce'];
   optimal: Problem['optimal'];
   created_at: string;
+  is_top150: boolean | null;
 };
 
 function rowToProblem(row: DbRow): Problem {
@@ -28,6 +29,7 @@ function rowToProblem(row: DbRow): Problem {
     bruteForce: row.brute_force,
     optimal: row.optimal,
     createdAt: row.created_at,
+    isTop150: row.is_top150 === true,
   };
 }
 
@@ -43,6 +45,7 @@ function problemToRow(p: Problem) {
     brute_force: p.bruteForce,
     optimal: p.optimal,
     created_at: p.createdAt,
+    is_top150: p.isTop150,
   };
 }
 

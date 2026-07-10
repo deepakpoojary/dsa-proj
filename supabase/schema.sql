@@ -59,5 +59,15 @@ insert into problem_topics (name, sort_order) values
   ('Backtracking', 9),
   ('Heap', 10),
   ('Trie', 11),
-  ('Greedy', 12)
+  ('Greedy', 12),
+  ('BST', 13),
+  ('Strings', 14),
+  ('Bit Manipulation', 15),
+  ('Math', 16),
+  ('Queue', 17)
 on conflict (name) do update set sort_order = excluded.sort_order;
+
+-- ── problems.is_top150 ──────────────────────────────────────────────────
+-- Hand-curated flag marking the ~150 most classic/interview-relevant
+-- problems, used to drive a "Top 150" filter on top of the full list.
+alter table problems add column if not exists is_top150 boolean not null default false;

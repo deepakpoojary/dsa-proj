@@ -46,6 +46,8 @@ export default function ProblemsView({
   const [problems, setProblems] = useState(initialProblems);
   const [query, setQuery] = useState('');
   const [editMode, setEditMode] = useState(false);
+  const [topicFilter, setTopicFilter] = useState('all');
+  const [top150Only, setTop150Only] = useState(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Re-sync when the server re-renders this tree (e.g. router.refresh() after
@@ -77,15 +79,23 @@ export default function ProblemsView({
     setProblems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }, []);
 
+  const scoped = useMemo(() => {
+    return problems.filter(
+      (p) =>
+        (topicFilter === 'all' || p.topic === topicFilter) &&
+        (!top150Only || p.isTop150)
+    );
+  }, [problems, topicFilter, top150Only]);
+
   const fuse = useMemo(
-    () => new Fuse(problems, { keys: ['title', 'description', 'topic'], threshold: 0.35 }),
-    [problems]
+    () => new Fuse(scoped, { keys: ['title', 'description', 'topic'], threshold: 0.35 }),
+    [scoped]
   );
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return problems;
+    if (!query.trim()) return scoped;
     return fuse.search(query).map((r) => r.item);
-  }, [query, fuse, problems]);
+  }, [query, fuse, scoped]);
 
   const topicRank = useMemo(() => {
     const map = new Map<string, number>();
@@ -197,27 +207,79 @@ export default function ProblemsView({
           )}
         </div>
 
+        {/* Topic filter */}
+        <div>
+          <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: '#8b949e', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+            Topic
+          </label>
+          <select
+            value={topicFilter}
+            onChange={(e) => setTopicFilter(e.target.value)}
+            style={{
+              width: '100%', background: '#161b22', border: '1px solid #30363d',
+              borderRadius: '8px', padding: '0.45rem 0.6rem', color: '#e6edf3',
+              fontSize: '0.8rem', outline: 'none',
+            }}
+          >
+            <option value="all">All Topics ({problems.length})</option>
+            {allTopics.map((topic) => (
+              <option key={topic} value={topic}>
+                {topic} ({problems.filter((p) => p.topic === topic).length})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Top 150 toggle */}
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 10px', borderRadius: '8px',
+            background: top150Only ? 'rgba(210,153,34,0.08)' : '#161b22',
+            border: `1px solid ${top150Only ? 'rgba(210,153,34,0.3)' : '#30363d'}`,
+            transition: 'all 0.2s',
+          }}
+        >
+          <span style={{ fontSize: '0.8rem', color: top150Only ? '#d29922' : '#8b949e', fontWeight: 500 }}>
+            ⭐ Top 150 only
+          </span>
+          <Toggle checked={top150Only} onChange={() => setTop150Only((v) => !v)} />
+        </div>
+
         {/* TOC */}
         <nav>
-          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#8b949e', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-            Topics
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#8b949e', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Topics
+            </span>
+            {topicFilter !== 'all' && (
+              <button
+                onClick={() => setTopicFilter('all')}
+                style={{ background: 'none', border: 'none', color: '#58a6ff', fontSize: '0.7rem', cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {allTopics.map((topic) => {
               const active = visibleTopics.includes(topic);
-              const count = (grouped.get(topic) || problems.filter((p) => p.topic === topic)).length;
+              const selected = topicFilter === topic;
+              const count = problems.filter((p) => p.topic === topic).length;
               return (
                 <a
                   key={topic}
                   href={`#${topicId(topic)}`}
+                  onClick={(e) => { e.preventDefault(); setTopicFilter(topic); }}
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '0.82rem',
-                    color: active ? '#e6edf3' : '#4a5568', textDecoration: 'none',
-                    pointerEvents: active ? 'auto' : 'none', transition: 'background 0.15s',
+                    color: selected ? '#e6edf3' : active ? '#8b949e' : '#4a5568',
+                    background: selected ? '#161b22' : 'transparent',
+                    textDecoration: 'none', transition: 'background 0.15s',
                   }}
-                  onMouseEnter={(e) => { if (active) (e.currentTarget as HTMLElement).style.background = '#161b22'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#161b22'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = selected ? '#161b22' : 'transparent'; }}
                 >
                   <span>{topic}</span>
                   <span style={{ fontSize: '0.7rem', background: '#30363d', color: active ? '#8b949e' : '#4a5568', padding: '0 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center' }}>
@@ -251,16 +313,24 @@ export default function ProblemsView({
         <div style={{ marginBottom: '2rem', paddingBottom: '1.5rem', borderBottom: '1px solid #30363d' }}>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#e6edf3', margin: 0 }}>DSA Answers</h1>
           <p style={{ color: '#8b949e', fontSize: '0.875rem', marginTop: '4px' }}>
-            {query
-              ? `${filtered.length} result${filtered.length !== 1 ? 's' : ''} for "${query}"`
-              : 'All problems with brute force & optimal solutions — just scroll'}
+            {query ? (
+              `${filtered.length} result${filtered.length !== 1 ? 's' : ''} for "${query}"`
+            ) : topicFilter !== 'all' || top150Only ? (
+              `${filtered.length} problem${filtered.length !== 1 ? 's' : ''}${topicFilter !== 'all' ? ` in ${topicFilter}` : ''}${top150Only ? ' · ⭐ Top 150' : ''}`
+            ) : (
+              'All problems with brute force & optimal solutions — just scroll'
+            )}
           </p>
         </div>
 
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#8b949e', padding: '4rem 0' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>¯\_(ツ)_/¯</div>
-            <div>No problems found for &quot;{query}&quot;</div>
+            <div>
+              {query
+                ? `No problems found for "${query}"`
+                : 'No problems match the current filters'}
+            </div>
           </div>
         ) : (
           Array.from(grouped.entries()).map(([topic, topicProblems]) => (
