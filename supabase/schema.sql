@@ -96,3 +96,55 @@ create policy "user_progress_insert_own" on user_progress
 drop policy if exists "user_progress_delete_own" on user_progress;
 create policy "user_progress_delete_own" on user_progress
   for delete using (auth.uid() = user_id);
+
+-- ── theory_progress ──────────────────────────────────────────────────────
+-- Same "solved" tracking as user_progress, but for theory_questions —
+-- kept as a separate table since the FK targets a different parent table.
+create table if not exists theory_progress (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  question_id text not null references theory_questions(id) on delete cascade,
+  solved_at timestamptz not null default now(),
+  primary key (user_id, question_id)
+);
+
+alter table theory_progress enable row level security;
+
+drop policy if exists "theory_progress_select_own" on theory_progress;
+create policy "theory_progress_select_own" on theory_progress
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "theory_progress_insert_own" on theory_progress;
+create policy "theory_progress_insert_own" on theory_progress
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "theory_progress_delete_own" on theory_progress;
+create policy "theory_progress_delete_own" on theory_progress
+  for delete using (auth.uid() = user_id);
+
+-- ── user_finance ─────────────────────────────────────────────────────────
+-- Per-user Net Worth tracker: a starting balance (e.g. existing debt, entered
+-- as a negative number) plus a target and a day-count, used to compute
+-- "₹X/day needed to reach target" on the /dashboard page. Earned amounts
+-- themselves are NOT stored here — they're derived live from user_progress
+-- and theory_progress, same as everywhere else in this app.
+create table if not exists user_finance (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  starting_balance numeric not null default 0,
+  target_amount numeric not null default 0,
+  target_days integer not null default 90,
+  updated_at timestamptz not null default now()
+);
+
+alter table user_finance enable row level security;
+
+drop policy if exists "user_finance_select_own" on user_finance;
+create policy "user_finance_select_own" on user_finance
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_finance_insert_own" on user_finance;
+create policy "user_finance_insert_own" on user_finance
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_finance_update_own" on user_finance;
+create policy "user_finance_update_own" on user_finance
+  for update using (auth.uid() = user_id);

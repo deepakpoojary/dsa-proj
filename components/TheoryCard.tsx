@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { TheoryQuestion } from '@/types/theory'
+import { TheoryQuestion, rewardForTheory } from '@/types/theory'
 
 const difficultyColors: Record<string, { text: string; bg: string; border: string }> = {
   Easy: { text: '#3fb950', bg: 'rgba(63,185,80,0.1)', border: 'rgba(63,185,80,0.3)' },
@@ -51,18 +51,22 @@ export default function TheoryCard({
   question,
   editMode,
   topicColor,
+  canTrackProgress,
   onUpdate,
   onDelete,
   onAddAbove,
   onAddBelow,
+  onToggleSolved,
 }: {
   question: TheoryQuestion
   editMode: boolean
   topicColor: string
+  canTrackProgress: boolean
   onUpdate: (updates: Partial<TheoryQuestion>) => void
   onDelete: () => void
   onAddAbove: () => void
   onAddBelow: () => void
+  onToggleSolved: (questionId: string, solved: boolean) => void
 }) {
   const [saved, setSaved] = useState(false)
   const [hoverAdd, setHoverAdd] = useState<'above' | 'below' | null>(null)
@@ -174,6 +178,37 @@ export default function TheoryCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
             {saved && (
               <span style={{ fontSize: '0.7rem', color: '#3fb950', animation: 'fadeIn 0.2s ease' }}>✓ saved</span>
+            )}
+            {canTrackProgress ? (
+              <label
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem',
+                  padding: '2px 8px', borderRadius: '999px', fontWeight: 500, cursor: 'pointer',
+                  border: `1px solid ${question.solved ? 'rgba(63,185,80,0.3)' : 'rgba(210,153,34,0.3)'}`,
+                  background: question.solved ? 'rgba(63,185,80,0.1)' : 'rgba(210,153,34,0.1)',
+                  color: question.solved ? '#3fb950' : '#d29922',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={question.solved}
+                  onChange={(e) => onToggleSolved(question.id, e.target.checked)}
+                  className="accent-current"
+                />
+                +₹{rewardForTheory(question)}
+              </label>
+            ) : (
+              <a
+                href="/login"
+                title="Log in to track progress and earn rewards"
+                style={{
+                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: '999px', fontWeight: 500,
+                  border: '1px solid rgba(210,153,34,0.3)', background: 'rgba(210,153,34,0.1)',
+                  color: '#d29922', textDecoration: 'none',
+                }}
+              >
+                +₹{rewardForTheory(question)}
+              </a>
             )}
             <span
               onClick={cycleDifficulty}

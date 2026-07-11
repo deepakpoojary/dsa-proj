@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { TheoryData, TheoryQuestion } from '@/types/theory'
+import { useState, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { TheoryData, TheoryQuestion, rewardForTheory } from '@/types/theory'
+import { createClient } from '@/lib/supabase/client'
 import TheoryCard from './TheoryCard'
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -39,9 +41,65 @@ function topicId(key: string) {
   return `theory-${key.toLowerCase()}`
 }
 
-export default function TheoryView({ data: initialData }: { data: TheoryData }) {
+export default function TheoryView({
+  data: initialData,
+  email,
+  isAdmin,
+  startingBalance,
+  otherDomainEarned,
+  otherDomainEarnedToday,
+}: {
+  data: TheoryData
+  email: string | null
+  isAdmin: boolean
+  startingBalance: number
+  otherDomainEarned: number
+  otherDomainEarnedToday: number
+}) {
+  const router = useRouter()
   const [data, setData] = useState<TheoryData>(initialData)
-  const [editMode, setEditMode] = useState(true)
+  const [editMode, setEditMode] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+
+  const handleLogout = async () => {
+    setSigningOut(true)
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/theory')
+    router.refresh()
+  }
+
+  const handleToggleSolved = useCallback((questionId: string, solved: boolean) => {
+    setData((prev) => ({
+      ...prev,
+      questions: prev.questions.map((q) =>
+        q.id === questionId ? { ...q, solved, solvedToday: solved ? true : q.solvedToday } : q
+      ),
+    }))
+    fetch('/api/theory-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId, solved }),
+    }).catch(() => {
+      setData((prev) => ({
+        ...prev,
+        questions: prev.questions.map((q) => (q.id === questionId ? { ...q, solved: !solved } : q)),
+      }))
+    })
+  }, [])
+
+  const totalEarned = useMemo(
+    () => data.questions.filter((q) => q.solved).reduce((sum, q) => sum + rewardForTheory(q), 0),
+    [data.questions]
+  )
+
+  const earnedTodayFromTheory = useMemo(
+    () => data.questions.filter((q) => q.solved && q.solvedToday).reduce((sum, q) => sum + rewardForTheory(q), 0),
+    [data.questions]
+  )
+
+  const earnedToday = earnedTodayFromTheory + otherDomainEarnedToday
+  const netWorth = startingBalance + totalEarned + otherDomainEarned
 
   const topicEntries = Object.entries(data.topics)
   const enabledKeys = topicEntries.filter(([, t]) => t.enabled).map(([k]) => k)
@@ -149,8 +207,106 @@ export default function TheoryView({ data: initialData }: { data: TheoryData }) 
         >
           ← DSA ProblemS
         </a>
+        <a
+          href="/dashboard"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.8rem',
+            color: '#8b949e',
+            textDecoration: 'none',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
+        >
+          💰 Net Worth
+        </a>
 
-        {/* Edit mode */}
+        {/* Earned today */}
+        <div
+          style={{
+            padding: '10px 12px',
+            borderRadius: '8px',
+            background: 'rgba(88,166,255,0.08)',
+            border: '1px solid rgba(88,166,255,0.3)',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Earned Today
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#58a6ff' }}>
+            ₹{earnedToday.toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        {/* Net worth */}
+        <a
+          href="/dashboard"
+          style={{
+            display: 'block',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            background: netWorth < 0 ? 'rgba(248,81,73,0.08)' : 'rgba(63,185,80,0.08)',
+            border: `1px solid ${netWorth < 0 ? 'rgba(248,81,73,0.3)' : 'rgba(63,185,80,0.3)'}`,
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Net Worth
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: netWorth < 0 ? '#f85149' : '#3fb950' }}>
+            {netWorth < 0 ? '-' : ''}₹{Math.abs(Math.round(netWorth)).toLocaleString('en-IN')}
+          </div>
+        </a>
+
+        {/* Total earned counter */}
+        <div
+          style={{
+            padding: '10px 12px',
+            borderRadius: '8px',
+            background: 'rgba(63,185,80,0.08)',
+            border: '1px solid rgba(63,185,80,0.3)',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Total Earned
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#3fb950' }}>
+            ₹{totalEarned.toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        {/* Auth / account */}
+        {email ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {email}
+            </span>
+            <button
+              onClick={handleLogout}
+              disabled={signingOut}
+              style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '0.72rem', cursor: 'pointer', flexShrink: 0, textDecoration: 'underline' }}
+            >
+              Log out
+            </button>
+          </div>
+        ) : (
+          <a
+            href="/login"
+            style={{
+              display: 'block', textAlign: 'center', padding: '0.45rem', borderRadius: '8px',
+              border: '1px solid #30363d', color: '#e6edf3', fontSize: '0.78rem',
+              textDecoration: 'none', background: '#21262d',
+            }}
+          >
+            Log in
+          </a>
+        )}
+
+        {/* Edit mode — admin only */}
+        {isAdmin && (
         <div
           style={{
             display: 'flex',
@@ -168,6 +324,7 @@ export default function TheoryView({ data: initialData }: { data: TheoryData }) 
           </span>
           <Toggle checked={editMode} onChange={() => setEditMode((e) => !e)} />
         </div>
+        )}
 
         {/* Topic toggles */}
         <div>
@@ -324,12 +481,14 @@ export default function TheoryView({ data: initialData }: { data: TheoryData }) 
                     <TheoryCard
                       key={q.id}
                       question={q}
-                      editMode={editMode}
+                      editMode={editMode && isAdmin}
                       topicColor={topic.color}
+                      canTrackProgress={!!email}
                       onUpdate={(updates) => updateQuestion(q.id, updates)}
                       onDelete={() => deleteQuestion(q.id)}
                       onAddAbove={() => addQuestion(key, q.id, true)}
                       onAddBelow={() => addQuestion(key, q.id, false)}
+                      onToggleSolved={handleToggleSolved}
                     />
                   ))}
                 </div>

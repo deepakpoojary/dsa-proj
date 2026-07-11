@@ -36,3 +36,44 @@ export async function getSolvedProblemIds(userId: string | undefined): Promise<S
 
   return new Set((data ?? []).map((row) => row.problem_id as string));
 }
+
+export async function getSolvedTheoryIds(userId: string | undefined): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const { data } = await adminSupabase
+    .from('theory_progress')
+    .select('question_id')
+    .eq('user_id', userId);
+
+  return new Set((data ?? []).map((row) => row.question_id as string));
+}
+
+function startOfTodayIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+export async function getSolvedTodayProblemIds(userId: string | undefined): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const { data } = await adminSupabase
+    .from('user_progress')
+    .select('problem_id')
+    .eq('user_id', userId)
+    .gte('solved_at', startOfTodayIso());
+
+  return new Set((data ?? []).map((row) => row.problem_id as string));
+}
+
+export async function getSolvedTodayTheoryIds(userId: string | undefined): Promise<Set<string>> {
+  if (!userId) return new Set();
+
+  const { data } = await adminSupabase
+    .from('theory_progress')
+    .select('question_id')
+    .eq('user_id', userId)
+    .gte('solved_at', startOfTodayIso());
+
+  return new Set((data ?? []).map((row) => row.question_id as string));
+}

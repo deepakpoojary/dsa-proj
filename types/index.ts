@@ -35,10 +35,11 @@ export interface EnrichedProblem extends Problem {
   optimalHtml: string;
   isLocked: boolean;
   solved: boolean;
+  solvedToday: boolean;
 }
 
-export const REWARD_TOP150 = 1000;
-export const REWARD_REGULAR = 500;
+export const REWARD_TOP150 = 10;
+export const REWARD_REGULAR = 5;
 
 export function rewardFor(problem: Pick<Problem, 'isTop150'>): number {
   return problem.isTop150 ? REWARD_TOP150 : REWARD_REGULAR;

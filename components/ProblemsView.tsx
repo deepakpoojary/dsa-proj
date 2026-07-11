@@ -36,12 +36,18 @@ export default function ProblemsView({
   email,
   hasPaid,
   isAdmin,
+  startingBalance,
+  otherDomainEarned,
+  otherDomainEarnedToday,
 }: {
   problems: EnrichedProblem[];
   topicOrder: string[];
   email: string | null;
   hasPaid: boolean;
   isAdmin: boolean;
+  startingBalance: number;
+  otherDomainEarned: number;
+  otherDomainEarnedToday: number;
 }) {
   const [problems, setProblems] = useState(initialProblems);
   const [query, setQuery] = useState('');
@@ -80,7 +86,10 @@ export default function ProblemsView({
   }, []);
 
   const handleToggleSolved = useCallback((problemId: string, solved: boolean) => {
-    setProblems((prev) => prev.map((p) => (p.id === problemId ? { ...p, solved } : p)));
+    // Checking it right now IS "today" — solvedToday only ever needs to be
+    // set true here; unchecking removes the row entirely so it stops
+    // counting toward everything regardless of when it was first solved.
+    setProblems((prev) => prev.map((p) => (p.id === problemId ? { ...p, solved, solvedToday: solved ? true : p.solvedToday } : p)));
     fetch('/api/progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -95,6 +104,14 @@ export default function ProblemsView({
     () => problems.filter((p) => p.solved).reduce((sum, p) => sum + rewardFor(p), 0),
     [problems]
   );
+
+  const earnedTodayFromProblems = useMemo(
+    () => problems.filter((p) => p.solved && p.solvedToday).reduce((sum, p) => sum + rewardFor(p), 0),
+    [problems]
+  );
+
+  const earnedToday = earnedTodayFromProblems + otherDomainEarnedToday;
+  const netWorth = startingBalance + totalEarned + otherDomainEarned;
 
   const scoped = useMemo(() => {
     return problems.filter(
@@ -175,7 +192,52 @@ export default function ProblemsView({
           >
             📖 Theory Q&amp;A
           </a>
+          <a
+            href="/dashboard"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px',
+              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
+              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
+          >
+            💰 Net Worth
+          </a>
         </div>
+
+        {/* Earned today */}
+        <div
+          style={{
+            padding: '10px 12px', borderRadius: '8px',
+            background: 'rgba(88,166,255,0.08)', border: '1px solid rgba(88,166,255,0.3)',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Earned Today
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#58a6ff' }}>
+            ₹{earnedToday.toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        {/* Net worth */}
+        <a
+          href="/dashboard"
+          style={{
+            display: 'block', padding: '10px 12px', borderRadius: '8px', textDecoration: 'none',
+            background: netWorth < 0 ? 'rgba(248,81,73,0.08)' : 'rgba(63,185,80,0.08)',
+            border: `1px solid ${netWorth < 0 ? 'rgba(248,81,73,0.3)' : 'rgba(63,185,80,0.3)'}`,
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Net Worth
+          </div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 700, color: netWorth < 0 ? '#f85149' : '#3fb950' }}>
+            {netWorth < 0 ? '-' : ''}₹{Math.abs(Math.round(netWorth)).toLocaleString('en-IN')}
+          </div>
+        </a>
 
         {/* Total earned counter */}
         <div

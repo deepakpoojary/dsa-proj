@@ -23,6 +23,8 @@ export async function getTheoryData(): Promise<TheoryData> {
     answer: r.answer,
     difficulty: r.difficulty as TheoryQuestion['difficulty'],
     createdAt: r.created_at,
+    solved: false,
+    solvedToday: false,
   }));
 
   return { topics, questions };
@@ -89,6 +91,8 @@ export async function addTheoryQuestion(
     answer: row.answer,
     difficulty: row.difficulty as TheoryQuestion['difficulty'],
     createdAt: row.created_at,
+    solved: false,
+    solvedToday: false,
   };
 }
 
@@ -110,7 +114,7 @@ export async function updateTheoryQuestion(
 
   if (!data) return null;
   const r = data as any;
-  return { id: r.id, topic: r.topic, question: r.question, answer: r.answer, difficulty: r.difficulty, createdAt: r.created_at };
+  return { id: r.id, topic: r.topic, question: r.question, answer: r.answer, difficulty: r.difficulty, createdAt: r.created_at, solved: false, solvedToday: false };
 }
 
 export async function deleteTheoryQuestion(id: string): Promise<void> {
