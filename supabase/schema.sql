@@ -121,6 +121,40 @@ drop policy if exists "theory_progress_delete_own" on theory_progress;
 create policy "theory_progress_delete_own" on theory_progress
   for delete using (auth.uid() = user_id);
 
+-- ── user_problem_overrides ──────────────────────────────────────────────
+-- Per-user private edits layered over the master `problems` row. A user's
+-- inline edit writes here, never to `problems` — so admin edits to master
+-- data only reach users who haven't personalized that problem yet; anyone
+-- with an override row keeps seeing their own version regardless of what
+-- admin changes afterward.
+create table if not exists user_problem_overrides (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  problem_id text not null references problems(id) on delete cascade,
+  description text,
+  brute_force jsonb,
+  optimal jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, problem_id)
+);
+
+alter table user_problem_overrides enable row level security;
+
+drop policy if exists "user_problem_overrides_select_own" on user_problem_overrides;
+create policy "user_problem_overrides_select_own" on user_problem_overrides
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_problem_overrides_insert_own" on user_problem_overrides;
+create policy "user_problem_overrides_insert_own" on user_problem_overrides
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_problem_overrides_update_own" on user_problem_overrides;
+create policy "user_problem_overrides_update_own" on user_problem_overrides
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "user_problem_overrides_delete_own" on user_problem_overrides;
+create policy "user_problem_overrides_delete_own" on user_problem_overrides
+  for delete using (auth.uid() = user_id);
+
 -- ── user_finance ─────────────────────────────────────────────────────────
 -- Per-user Net Worth tracker: a starting balance (e.g. existing debt, entered
 -- as a negative number) plus a target and a day-count, used to compute

@@ -18,6 +18,7 @@ export default function ProblemCard({
   problem: initialProblem,
   index,
   editMode,
+  scope = 'personal',
   locked = false,
   canTrackProgress,
   onUpdate,
@@ -26,6 +27,7 @@ export default function ProblemCard({
   problem: EnrichedProblem;
   index: number;
   editMode: boolean;
+  scope?: 'master' | 'personal';
   locked?: boolean;
   canTrackProgress: boolean;
   onUpdate: (updated: EnrichedProblem) => void;
@@ -54,16 +56,22 @@ export default function ProblemCard({
     setTimeout(() => setSaved(false), 1800);
   }, []);
 
+  const endpoint = scope === 'personal' ? `/api/problems/${problem.id}/mine` : `/api/problems/${problem.id}`;
+
   const save = useCallback(async (updates: Record<string, unknown>) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/problems/${problem.id}`, {
+      const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
       if (res.ok) {
-        const updated: EnrichedProblem = await res.json();
+        // Merge onto the existing problem rather than replacing it — the
+        // response only carries the editable content fields, not
+        // solved/isLocked/etc, which must survive an edit untouched.
+        const patch = await res.json();
+        const updated: EnrichedProblem = { ...problem, ...patch };
         setProblem(updated);
         onUpdate(updated);
         flashSaved();
@@ -71,7 +79,23 @@ export default function ProblemCard({
     } finally {
       setSaving(false);
     }
-  }, [problem.id, onUpdate, flashSaved]);
+  }, [problem, endpoint, onUpdate, flashSaved]);
+
+  const resetToMaster = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/problems/${problem.id}/mine`, { method: 'DELETE' });
+      if (res.ok) {
+        const patch = await res.json();
+        const updated: EnrichedProblem = { ...problem, ...patch };
+        setProblem(updated);
+        onUpdate(updated);
+        flashSaved();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [problem, onUpdate, flashSaved]);
 
   const handleDescBlur = useCallback(() => {
     const val = descRef.current?.value ?? '';
@@ -129,6 +153,26 @@ export default function ProblemCard({
         <div className="flex gap-2 flex-wrap items-center">
           {saving && <span className="text-[#8b949e] text-xs">saving…</span>}
           {saved && <span className="text-[#3fb950] text-xs">✓ saved</span>}
+          {scope === 'personal' && problem.hasOverride && (
+            <>
+              <span
+                className="text-xs px-2.5 py-0.5 rounded-full border font-medium text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/30"
+                title="You've personalized this problem — admin edits won't overwrite it"
+              >
+                ✎ personalized
+              </span>
+              {editMode && (
+                <button
+                  type="button"
+                  onClick={resetToMaster}
+                  className="text-xs px-2.5 py-0.5 rounded-full border font-medium text-[#8b949e] border-[#30363d] hover:text-[#e6edf3] hover:border-[#8b949e] transition-colors"
+                  title="Discard your edits and go back to the original"
+                >
+                  reset
+                </button>
+              )}
+            </>
+          )}
           {!locked && (
             canTrackProgress ? (
               <label

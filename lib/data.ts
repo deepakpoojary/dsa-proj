@@ -98,3 +98,74 @@ export async function deleteProblem(id: string): Promise<void> {
   const { error } = await supabase.from('problems').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+export type ProblemOverride = {
+  description: string;
+  bruteForce: Problem['bruteForce'];
+  optimal: Problem['optimal'];
+};
+
+type OverrideRow = {
+  problem_id: string;
+  description: string;
+  brute_force: Problem['bruteForce'];
+  optimal: Problem['optimal'];
+};
+
+function rowToOverride(row: OverrideRow): ProblemOverride {
+  return { description: row.description, bruteForce: row.brute_force, optimal: row.optimal };
+}
+
+// All of a user's personal overrides, keyed by problem_id — used to merge
+// a user's private edits over master data when rendering the problem list.
+export async function getUserOverrides(userId: string | undefined): Promise<Map<string, ProblemOverride>> {
+  if (!userId) return new Map();
+
+  const { data, error } = await supabase
+    .from('user_problem_overrides')
+    .select('problem_id, description, brute_force, optimal')
+    .eq('user_id', userId);
+
+  if (error) throw new Error(error.message);
+  return new Map((data as OverrideRow[]).map((row) => [row.problem_id, rowToOverride(row)]));
+}
+
+export async function getUserOverride(userId: string, problemId: string): Promise<ProblemOverride | null> {
+  const { data, error } = await supabase
+    .from('user_problem_overrides')
+    .select('problem_id, description, brute_force, optimal')
+    .eq('user_id', userId)
+    .eq('problem_id', problemId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ? rowToOverride(data as OverrideRow) : null;
+}
+
+export async function upsertUserOverride(
+  userId: string,
+  problemId: string,
+  override: ProblemOverride
+): Promise<void> {
+  const { error } = await supabase.from('user_problem_overrides').upsert(
+    {
+      user_id: userId,
+      problem_id: problemId,
+      description: override.description,
+      brute_force: override.bruteForce,
+      optimal: override.optimal,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,problem_id' }
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteUserOverride(userId: string, problemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_problem_overrides')
+    .delete()
+    .eq('user_id', userId)
+    .eq('problem_id', problemId);
+  if (error) throw new Error(error.message);
+}

@@ -1,4 +1,4 @@
-import { getProblems, getProblemTopics, FREE_TOPIC_COUNT } from '@/lib/data';
+import { getProblems, getProblemTopics, getUserOverrides, FREE_TOPIC_COUNT } from '@/lib/data';
 import { highlight } from '@/lib/highlight';
 import {
   getCurrentUser,
@@ -21,26 +21,40 @@ export default async function Home() {
     isAdminSession(),
   ]);
 
-  const [solvedIds, solvedTodayIds, finance, otherDomainEarned, otherDomainEarnedToday] = await Promise.all([
+  const [solvedIds, solvedTodayIds, finance, otherDomainEarned, otherDomainEarnedToday, overrides] = await Promise.all([
     getSolvedProblemIds(user?.id),
     getSolvedTodayProblemIds(user?.id),
     getUserFinance(user?.id),
     getTheoryEarned(user?.id),
     getTheoryEarned(user?.id, startOfTodayIso()),
+    getUserOverrides(user?.id),
   ]);
 
   const freeTopics = new Set(topicOrder.slice(0, FREE_TOPIC_COUNT));
   const unlocked = hasPaid || isAdmin;
 
   const enriched = await Promise.all(
-    problems.map(async (p) => ({
-      ...p,
-      bruteHtml: await highlight(p.bruteForce.code, p.bruteForce.language),
-      optimalHtml: await highlight(p.optimal.code, p.optimal.language),
-      isLocked: !unlocked && !freeTopics.has(p.topic),
-      solved: solvedIds.has(p.id),
-      solvedToday: solvedTodayIds.has(p.id),
-    }))
+    problems.map(async (p) => {
+      // A user's personal override, if any, shadows master content —
+      // admin edits to master never touch it once it exists.
+      const override = overrides.get(p.id);
+      const description = override?.description ?? p.description;
+      const bruteForce = override?.bruteForce ?? p.bruteForce;
+      const optimal = override?.optimal ?? p.optimal;
+
+      return {
+        ...p,
+        description,
+        bruteForce,
+        optimal,
+        bruteHtml: await highlight(bruteForce.code, bruteForce.language),
+        optimalHtml: await highlight(optimal.code, optimal.language),
+        isLocked: !unlocked && !freeTopics.has(p.topic),
+        solved: solvedIds.has(p.id),
+        solvedToday: solvedTodayIds.has(p.id),
+        hasOverride: !!override,
+      };
+    })
   );
 
   return (

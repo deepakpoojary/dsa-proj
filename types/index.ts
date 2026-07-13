@@ -36,6 +36,7 @@ export interface EnrichedProblem extends Problem {
   isLocked: boolean;
   solved: boolean;
   solvedToday: boolean;
+  hasOverride: boolean;
 }
 
 export const REWARD_TOP150 = 10;

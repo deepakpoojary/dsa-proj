@@ -257,8 +257,9 @@ export default function ProblemsView({
         {/* Auth / account */}
         <UserNav email={email} hasPaid={hasPaid} />
 
-        {/* Edit mode toggle — admin only */}
-        {isAdmin && (
+        {/* Edit mode toggle — admins edit master data, any logged-in user
+            edits their own private copy that admin changes won't touch */}
+        {(isAdmin || email) && (
           <div
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -269,7 +270,7 @@ export default function ProblemsView({
             }}
           >
             <span style={{ fontSize: '0.8rem', color: editMode ? '#58a6ff' : '#8b949e', fontWeight: 500 }}>
-              ✏ Edit Mode
+              ✏ Edit Mode {isAdmin ? '(master)' : '(personal)'}
             </span>
             <Toggle checked={editMode} onChange={() => setEditMode((e) => !e)} />
           </div>
@@ -441,7 +442,8 @@ export default function ProblemsView({
                   key={problem.id}
                   problem={problem}
                   index={i}
-                  editMode={editMode && isAdmin}
+                  editMode={editMode && (isAdmin || !!email)}
+                  scope={isAdmin ? 'master' : 'personal'}
                   locked={problem.isLocked}
                   canTrackProgress={!!email}
                   onUpdate={handleUpdate}
