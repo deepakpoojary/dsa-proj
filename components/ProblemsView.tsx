@@ -51,9 +51,9 @@ export default function ProblemsView({
 }) {
   const [problems, setProblems] = useState(initialProblems);
   const [query, setQuery] = useState('');
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(true);
   const [topicFilter, setTopicFilter] = useState('all');
-  const [top150Only, setTop150Only] = useState(false);
+  const [top150Only, setTop150Only] = useState(true);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Re-sync when the server re-renders this tree (e.g. router.refresh() after
