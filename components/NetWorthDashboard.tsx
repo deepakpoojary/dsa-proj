@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { UserFinance, EarningsBreakdown } from '@/lib/finance';
+import { UserFinance, EarningsBreakdown, EarningsRange, EarningsPoint } from '@/lib/finance';
+import EarningsChart from '@/components/EarningsChart';
 
 function formatInr(n: number) {
   const sign = n < 0 ? '-' : '';
@@ -12,10 +13,12 @@ export default function NetWorthDashboard({
   finance,
   totalEarned,
   earnings,
+  series,
 }: {
   finance: UserFinance;
   totalEarned: number;
   earnings: EarningsBreakdown;
+  series: Record<EarningsRange, EarningsPoint[]>;
 }) {
   const [startingBalance, setStartingBalance] = useState(finance.startingBalance);
   const [targetAmount, setTargetAmount] = useState(finance.targetAmount);
@@ -153,6 +156,8 @@ export default function NetWorthDashboard({
             ))}
           </div>
         </div>
+
+        <EarningsChart series={series} />
 
         {/* Goal message */}
         <div

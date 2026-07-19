@@ -137,4 +137,115 @@ export async function getEarningsBreakdown(userId: string | undefined): Promise<
   return { today, week, month, year };
 }
 
+export type EarningsRange = 'week' | 'month' | 'year';
+
+export interface EarningsPoint {
+  label: string;
+  value: number;
+}
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function ym(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function buildDayBuckets(count: number): { key: string; label: string; date: Date }[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const buckets = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    buckets.push({ key: ymd(d), label: count <= 7 ? WEEKDAY_LABELS[d.getDay()] : `${d.getDate()}`, date: d });
+  }
+  return buckets;
+}
+
+function buildMonthBuckets(count: number): { key: string; label: string; date: Date }[] {
+  const today = new Date();
+  const buckets = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    buckets.push({ key: ym(d), label: MONTH_LABELS[d.getMonth()], date: d });
+  }
+  return buckets;
+}
+
+async function fetchProblemRows(userId: string, sinceIso: string): Promise<{ solved_at: string; problem_id: string }[]> {
+  const { data } = await adminSupabase
+    .from('user_progress')
+    .select('solved_at, problem_id')
+    .eq('user_id', userId)
+    .gte('solved_at', sinceIso);
+  return data ?? [];
+}
+
+async function fetchTheoryRows(userId: string, sinceIso: string): Promise<{ solved_at: string; question_id: string }[]> {
+  const { data } = await adminSupabase
+    .from('theory_progress')
+    .select('solved_at, question_id')
+    .eq('user_id', userId)
+    .gte('solved_at', sinceIso);
+  return data ?? [];
+}
+
+async function problemRewardMap(ids: string[]): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const { data } = await adminSupabase.from('problems').select('id, is_top150').in('id', ids);
+  return new Map((data ?? []).map((r) => [r.id as string, r.is_top150 ? REWARD_TOP150 : REWARD_REGULAR]));
+}
+
+async function theoryRewardMap(ids: string[]): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const { data } = await adminSupabase.from('theory_questions').select('id, difficulty').in('id', ids);
+  return new Map((data ?? []).map((r) => [r.id as string, r.difficulty === 'Hard' ? REWARD_TOP150 : REWARD_REGULAR]));
+}
+
+// Bucketed earnings for the dashboard chart — 'week' is the trailing 7 days
+// (daily), 'month' the trailing 30 days (daily), 'year' the trailing 12
+// months (monthly). Buckets with no solves still appear, at 0.
+export async function getEarningsSeries(userId: string | undefined, range: EarningsRange): Promise<EarningsPoint[]> {
+  const buckets = range === 'year' ? buildMonthBuckets(12) : buildDayBuckets(range === 'week' ? 7 : 30);
+  if (!userId) return buckets.map((b) => ({ label: b.label, value: 0 }));
+
+  const sinceIso = buckets[0].date.toISOString();
+  const keyFor = range === 'year' ? (iso: string) => ym(new Date(iso)) : (iso: string) => ymd(new Date(iso));
+
+  const [problemRows, theoryRows] = await Promise.all([
+    fetchProblemRows(userId, sinceIso),
+    fetchTheoryRows(userId, sinceIso),
+  ]);
+  const [pMap, tMap] = await Promise.all([
+    problemRewardMap(problemRows.map((r) => r.problem_id)),
+    theoryRewardMap(theoryRows.map((r) => r.question_id)),
+  ]);
+
+  const sums = new Map<string, number>();
+  for (const row of problemRows) {
+    const k = keyFor(row.solved_at);
+    sums.set(k, (sums.get(k) ?? 0) + (pMap.get(row.problem_id) ?? 0));
+  }
+  for (const row of theoryRows) {
+    const k = keyFor(row.solved_at);
+    sums.set(k, (sums.get(k) ?? 0) + (tMap.get(row.question_id) ?? 0));
+  }
+
+  return buckets.map((b) => ({ label: b.label, value: sums.get(b.key) ?? 0 }));
+}
+
+export async function getAllEarningsSeries(userId: string | undefined): Promise<Record<EarningsRange, EarningsPoint[]>> {
+  const [week, month, year] = await Promise.all([
+    getEarningsSeries(userId, 'week'),
+    getEarningsSeries(userId, 'month'),
+    getEarningsSeries(userId, 'year'),
+  ]);
+  return { week, month, year };
+}
+
 export { startOfTodayIso };

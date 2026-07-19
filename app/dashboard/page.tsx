@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/auth-helpers';
-import { getUserFinance, getTotalEarned, getEarningsBreakdown } from '@/lib/finance';
+import { getUserFinance, getTotalEarned, getEarningsBreakdown, getAllEarningsSeries } from '@/lib/finance';
 import NetWorthDashboard from '@/components/NetWorthDashboard';
 
 export const dynamic = 'force-dynamic';
@@ -50,11 +50,12 @@ export default async function DashboardPage() {
     );
   }
 
-  const [finance, totalEarned, earnings] = await Promise.all([
+  const [finance, totalEarned, earnings, series] = await Promise.all([
     getUserFinance(user.id),
     getTotalEarned(user.id),
     getEarningsBreakdown(user.id),
+    getAllEarningsSeries(user.id),
   ]);
 
-  return <NetWorthDashboard finance={finance} totalEarned={totalEarned} earnings={earnings} />;
+  return <NetWorthDashboard finance={finance} totalEarned={totalEarned} earnings={earnings} series={series} />;
 }
