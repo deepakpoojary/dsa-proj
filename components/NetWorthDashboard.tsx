@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { UserFinance, EarningsBreakdown, EarningsRange, EarningsPoint } from '@/lib/finance';
+import { UserFinance, EarningsBreakdown, EarningsRange, EarningsSeries } from '@/lib/finance';
 import EarningsChart from '@/components/EarningsChart';
 
 function formatInr(n: number) {
@@ -18,7 +18,7 @@ export default function NetWorthDashboard({
   finance: UserFinance;
   totalEarned: number;
   earnings: EarningsBreakdown;
-  series: Record<EarningsRange, EarningsPoint[]>;
+  series: Record<EarningsRange, EarningsSeries>;
 }) {
   const [startingBalance, setStartingBalance] = useState(finance.startingBalance);
   const [targetAmount, setTargetAmount] = useState(finance.targetAmount);

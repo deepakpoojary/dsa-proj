@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { EarningsPoint, EarningsRange } from '@/lib/finance';
+import { useCallback, useMemo, useState } from 'react';
+import { EarningsRange, EarningsSeries } from '@/lib/finance';
 
 const RANGES: { key: EarningsRange; label: string }[] = [
   { key: 'week', label: 'Week' },
@@ -30,17 +30,65 @@ function formatInr(n: number) {
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
-export default function EarningsChart({ series }: { series: Record<EarningsRange, EarningsPoint[]> }) {
+function cacheKey(range: EarningsRange, offset: number) {
+  return `${range}:${offset}`;
+}
+
+export default function EarningsChart({ series: initialSeries }: { series: Record<EarningsRange, EarningsSeries> }) {
   const [range, setRange] = useState<EarningsRange>('week');
+  const [offsets, setOffsets] = useState<Record<EarningsRange, number>>({ week: 0, month: 0, year: 0 });
+  const [cache, setCache] = useState<Record<string, EarningsSeries>>(() => ({
+    [cacheKey('week', 0)]: initialSeries.week,
+    [cacheKey('month', 0)]: initialSeries.month,
+    [cacheKey('year', 0)]: initialSeries.year,
+  }));
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
-  const points = series[range];
+  const offset = offsets[range];
+  const key = cacheKey(range, offset);
+  const current = cache[key];
+  const isLoading = loadingKey === key && !current;
 
-  const { bars, gridlines, max } = useMemo(() => {
+  const loadOffset = useCallback(
+    async (r: EarningsRange, o: number) => {
+      const k = cacheKey(r, o);
+      if (cache[k]) return;
+      setLoadingKey(k);
+      try {
+        const res = await fetch(`/api/finance/earnings?range=${r}&offset=${o}`);
+        if (!res.ok) return;
+        const data: EarningsSeries = await res.json();
+        setCache((prev) => ({ ...prev, [k]: data }));
+      } finally {
+        setLoadingKey((cur) => (cur === k ? null : cur));
+      }
+    },
+    [cache]
+  );
+
+  const goOlder = () => {
+    const next = offset + 1;
+    setOffsets((prev) => ({ ...prev, [range]: next }));
+    setHover(null);
+    loadOffset(range, next);
+  };
+
+  const goNewer = () => {
+    if (offset === 0) return;
+    const next = offset - 1;
+    setOffsets((prev) => ({ ...prev, [range]: next }));
+    setHover(null);
+    loadOffset(range, next);
+  };
+
+  const points = current?.points ?? [];
+
+  const { bars, gridlines } = useMemo(() => {
     const plotW = VB_WIDTH - PAD_LEFT;
     const plotH = VB_HEIGHT - PAD_TOP - PAD_BOTTOM;
     const max = niceMax(Math.max(...points.map((p) => p.value), 1));
-    const slot = plotW / points.length;
+    const slot = points.length ? plotW / points.length : plotW;
     const barW = Math.min(24, slot * 0.6);
 
     const bars = points.map((p, i) => {
@@ -55,7 +103,7 @@ export default function EarningsChart({ series }: { series: Record<EarningsRange
       value: max * f,
     }));
 
-    return { bars, gridlines, max };
+    return { bars, gridlines };
   }, [points]);
 
   const showEveryLabel = points.length <= 12;
@@ -67,7 +115,7 @@ export default function EarningsChart({ series }: { series: Record<EarningsRange
         background: '#161b22', border: '1px solid #30363d',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ fontSize: '0.72rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           Earnings Over Time
         </div>
@@ -91,13 +139,49 @@ export default function EarningsChart({ series }: { series: Record<EarningsRange
         </div>
       </div>
 
-      <div style={{ position: 'relative' }}>
+      {/* Period navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <button
+          type="button"
+          onClick={goOlder}
+          aria-label="Previous period"
+          title="Previous period"
+          style={{
+            width: '26px', height: '26px', borderRadius: '6px', cursor: 'pointer',
+            background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', fontSize: '0.85rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          ←
+        </button>
+        <span style={{ fontSize: '0.78rem', color: '#e6edf3', fontWeight: 600, minWidth: '160px', textAlign: 'center' }}>
+          {current?.label ?? '…'}
+        </span>
+        <button
+          type="button"
+          onClick={goNewer}
+          disabled={offset === 0}
+          aria-label="Next period"
+          title="Next period"
+          style={{
+            width: '26px', height: '26px', borderRadius: '6px',
+            cursor: offset === 0 ? 'default' : 'pointer',
+            background: '#0d1117', border: '1px solid #30363d',
+            color: offset === 0 ? '#484f58' : '#e6edf3', fontSize: '0.85rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          →
+        </button>
+      </div>
+
+      <div style={{ position: 'relative', opacity: isLoading || !current ? 0.4 : 1, transition: 'opacity 0.15s' }}>
         <svg
           viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
           preserveAspectRatio="none"
           style={{ width: '100%', height: `${VB_HEIGHT}px`, display: 'block', overflow: 'visible' }}
           role="img"
-          aria-label={`Earnings for the selected ${range}`}
+          aria-label={`Earnings for ${current?.label ?? 'the selected period'}`}
         >
           {gridlines.map((g, i) => (
             <g key={i}>
@@ -126,7 +210,7 @@ export default function EarningsChart({ series }: { series: Record<EarningsRange
               />
               {/* transparent hit area, bigger than the bar, for easy hover/tap */}
               <rect
-                x={PAD_LEFT + i * (VB_WIDTH - PAD_LEFT) / bars.length}
+                x={PAD_LEFT + (i * (VB_WIDTH - PAD_LEFT)) / bars.length}
                 y={PAD_TOP}
                 width={(VB_WIDTH - PAD_LEFT) / bars.length}
                 height={VB_HEIGHT - PAD_TOP - PAD_BOTTOM}

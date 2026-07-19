@@ -155,43 +155,61 @@ function ym(d: Date): string {
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function buildDayBuckets(count: number): { key: string; label: string; date: Date }[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+// offsetWindows shifts the whole window back by `offsetWindows * count` days —
+// 0 is the trailing window ending today, 1 the one immediately before it, etc.
+function buildDayBuckets(count: number, offsetWindows = 0): { key: string; label: string; date: Date }[] {
+  const anchor = new Date();
+  anchor.setHours(0, 0, 0, 0);
+  anchor.setDate(anchor.getDate() - offsetWindows * count);
   const buckets = [];
   for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(today);
+    const d = new Date(anchor);
     d.setDate(d.getDate() - i);
     buckets.push({ key: ymd(d), label: count <= 7 ? WEEKDAY_LABELS[d.getDay()] : `${d.getDate()}`, date: d });
   }
   return buckets;
 }
 
-function buildMonthBuckets(count: number): { key: string; label: string; date: Date }[] {
+// offsetWindows shifts back by `offsetWindows * count` months.
+function buildMonthBuckets(count: number, offsetWindows = 0): { key: string; label: string; date: Date }[] {
   const today = new Date();
+  const anchorMonth = today.getMonth() - offsetWindows * count;
   const buckets = [];
   for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const d = new Date(today.getFullYear(), anchorMonth - i, 1);
     buckets.push({ key: ym(d), label: MONTH_LABELS[d.getMonth()], date: d });
   }
   return buckets;
 }
 
-async function fetchProblemRows(userId: string, sinceIso: string): Promise<{ solved_at: string; problem_id: string }[]> {
+function formatDayRangeLabel(start: Date, end: Date): string {
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startStr = `${MONTH_LABELS[start.getMonth()]} ${start.getDate()}${sameYear ? '' : `, ${start.getFullYear()}`}`;
+  const endStr = `${MONTH_LABELS[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+  return `${startStr} – ${endStr}`;
+}
+
+function formatMonthRangeLabel(start: Date, end: Date): string {
+  return `${MONTH_LABELS[start.getMonth()]} ${start.getFullYear()} – ${MONTH_LABELS[end.getMonth()]} ${end.getFullYear()}`;
+}
+
+async function fetchProblemRows(userId: string, sinceIso: string, untilIso: string): Promise<{ solved_at: string; problem_id: string }[]> {
   const { data } = await adminSupabase
     .from('user_progress')
     .select('solved_at, problem_id')
     .eq('user_id', userId)
-    .gte('solved_at', sinceIso);
+    .gte('solved_at', sinceIso)
+    .lt('solved_at', untilIso);
   return data ?? [];
 }
 
-async function fetchTheoryRows(userId: string, sinceIso: string): Promise<{ solved_at: string; question_id: string }[]> {
+async function fetchTheoryRows(userId: string, sinceIso: string, untilIso: string): Promise<{ solved_at: string; question_id: string }[]> {
   const { data } = await adminSupabase
     .from('theory_progress')
     .select('solved_at, question_id')
     .eq('user_id', userId)
-    .gte('solved_at', sinceIso);
+    .gte('solved_at', sinceIso)
+    .lt('solved_at', untilIso);
   return data ?? [];
 }
 
@@ -207,19 +225,47 @@ async function theoryRewardMap(ids: string[]): Promise<Map<string, number>> {
   return new Map((data ?? []).map((r) => [r.id as string, r.difficulty === 'Hard' ? REWARD_TOP150 : REWARD_REGULAR]));
 }
 
-// Bucketed earnings for the dashboard chart — 'week' is the trailing 7 days
-// (daily), 'month' the trailing 30 days (daily), 'year' the trailing 12
-// months (monthly). Buckets with no solves still appear, at 0.
-export async function getEarningsSeries(userId: string | undefined, range: EarningsRange): Promise<EarningsPoint[]> {
-  const buckets = range === 'year' ? buildMonthBuckets(12) : buildDayBuckets(range === 'week' ? 7 : 30);
-  if (!userId) return buckets.map((b) => ({ label: b.label, value: 0 }));
+export interface EarningsSeries {
+  label: string;
+  points: EarningsPoint[];
+  canGoOlder: boolean;
+  canGoNewer: boolean;
+}
 
-  const sinceIso = buckets[0].date.toISOString();
-  const keyFor = range === 'year' ? (iso: string) => ym(new Date(iso)) : (iso: string) => ymd(new Date(iso));
+// Bucketed earnings for the dashboard chart — 'week' is a trailing-7-day
+// window (daily), 'month' a trailing-30-day window (daily), 'year' a
+// trailing-12-month window (monthly). `offset` pages whole windows into the
+// past (0 = ending today/this month, 1 = the window before that, ...).
+// Buckets with no solves still appear, at 0.
+export async function getEarningsSeries(
+  userId: string | undefined,
+  range: EarningsRange,
+  offset = 0
+): Promise<EarningsSeries> {
+  const isMonthly = range === 'year';
+  const count = range === 'week' ? 7 : range === 'month' ? 30 : 12;
+  const buckets = isMonthly ? buildMonthBuckets(count, offset) : buildDayBuckets(count, offset);
+
+  const start = buckets[0].date;
+  const end = buckets[buckets.length - 1].date;
+  const until = new Date(end);
+  if (isMonthly) until.setMonth(until.getMonth() + 1);
+  else until.setDate(until.getDate() + 1);
+
+  const label = isMonthly ? formatMonthRangeLabel(start, end) : formatDayRangeLabel(start, end);
+  const canGoNewer = offset > 0;
+
+  if (!userId) {
+    return { label, points: buckets.map((b) => ({ label: b.label, value: 0 })), canGoOlder: true, canGoNewer };
+  }
+
+  const sinceIso = start.toISOString();
+  const untilIso = until.toISOString();
+  const keyFor = isMonthly ? (iso: string) => ym(new Date(iso)) : (iso: string) => ymd(new Date(iso));
 
   const [problemRows, theoryRows] = await Promise.all([
-    fetchProblemRows(userId, sinceIso),
-    fetchTheoryRows(userId, sinceIso),
+    fetchProblemRows(userId, sinceIso, untilIso),
+    fetchTheoryRows(userId, sinceIso, untilIso),
   ]);
   const [pMap, tMap] = await Promise.all([
     problemRewardMap(problemRows.map((r) => r.problem_id)),
@@ -236,10 +282,15 @@ export async function getEarningsSeries(userId: string | undefined, range: Earni
     sums.set(k, (sums.get(k) ?? 0) + (tMap.get(row.question_id) ?? 0));
   }
 
-  return buckets.map((b) => ({ label: b.label, value: sums.get(b.key) ?? 0 }));
+  return {
+    label,
+    points: buckets.map((b) => ({ label: b.label, value: sums.get(b.key) ?? 0 })),
+    canGoOlder: true,
+    canGoNewer,
+  };
 }
 
-export async function getAllEarningsSeries(userId: string | undefined): Promise<Record<EarningsRange, EarningsPoint[]>> {
+export async function getAllEarningsSeries(userId: string | undefined): Promise<Record<EarningsRange, EarningsSeries>> {
   const [week, month, year] = await Promise.all([
     getEarningsSeries(userId, 'week'),
     getEarningsSeries(userId, 'month'),
