@@ -28,6 +28,8 @@ async function seed() {
       brute_force: p.bruteForce,
       optimal: p.optimal,
       created_at: p.createdAt,
+      leetcode_url: p.leetcodeUrl ?? null,
+      neetcode_url: p.neetcodeUrl ?? null,
     });
 
     if (error) {

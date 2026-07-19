@@ -72,6 +72,13 @@ on conflict (name) do update set sort_order = excluded.sort_order;
 -- problems, used to drive a "Top 150" filter on top of the full list.
 alter table problems add column if not exists is_top150 boolean not null default false;
 
+-- ── problems.leetcode_url / neetcode_url ────────────────────────────────
+-- Direct links to the problem on LeetCode and (where NeetCode covers it)
+-- neetcode.io, shown on each problem card. Null neetcode_url means NeetCode
+-- doesn't have a page for that problem.
+alter table problems add column if not exists leetcode_url text;
+alter table problems add column if not exists neetcode_url text;
+
 -- ── user_progress ────────────────────────────────────────────────────────
 -- Per-user "solved" checkbox state. Existence of a row = solved. Reward
 -- amount (₹500 / ₹1000) is derived from problems.is_top150 in app code,

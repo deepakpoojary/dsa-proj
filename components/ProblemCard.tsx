@@ -206,6 +206,28 @@ export default function ProblemCard({
           <span className="text-xs px-2.5 py-0.5 rounded-full border text-[#58a6ff] bg-[#58a6ff]/10 border-[#58a6ff]/30 font-medium">
             {problem.topic}
           </span>
+          {problem.leetcodeUrl && (
+            <a
+              href={problem.leetcodeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-2.5 py-0.5 rounded-full border font-medium text-[#d29922] bg-[#d29922]/10 border-[#d29922]/30 no-underline hover:opacity-80 transition-opacity"
+              title="Open on LeetCode"
+            >
+              LeetCode ↗
+            </a>
+          )}
+          {problem.neetcodeUrl && (
+            <a
+              href={problem.neetcodeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-2.5 py-0.5 rounded-full border font-medium text-[#a371f7] bg-[#a371f7]/10 border-[#a371f7]/30 no-underline hover:opacity-80 transition-opacity"
+              title="Open on NeetCode"
+            >
+              NeetCode ↗
+            </a>
+          )}
         </div>
       </div>
 

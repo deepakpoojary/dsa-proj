@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { UserFinance } from '@/lib/finance';
+import { UserFinance, EarningsBreakdown } from '@/lib/finance';
 
 function formatInr(n: number) {
   const sign = n < 0 ? '-' : '';
@@ -11,9 +11,11 @@ function formatInr(n: number) {
 export default function NetWorthDashboard({
   finance,
   totalEarned,
+  earnings,
 }: {
   finance: UserFinance;
   totalEarned: number;
+  earnings: EarningsBreakdown;
 }) {
   const [startingBalance, setStartingBalance] = useState(finance.startingBalance);
   const [targetAmount, setTargetAmount] = useState(finance.targetAmount);
@@ -117,6 +119,38 @@ export default function NetWorthDashboard({
               <span>{formatInr(startingBalance)}</span>
               <span>{formatInr(targetAmount)}</span>
             </div>
+          </div>
+        </div>
+
+        {/* Earnings breakdown */}
+        <div
+          style={{
+            marginTop: '1.25rem', padding: '1.25rem', borderRadius: '12px',
+            background: '#161b22', border: '1px solid #30363d',
+          }}
+        >
+          <div style={{ fontSize: '0.72rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '0.9rem' }}>
+            Earnings
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+            {[
+              { label: 'This Week', value: earnings.week },
+              { label: 'This Month', value: earnings.month },
+              { label: 'This Year', value: earnings.year },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                style={{
+                  padding: '0.85rem 0.5rem', borderRadius: '10px',
+                  background: '#0d1117', border: '1px solid #30363d', textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#3fb950', whiteSpace: 'nowrap' }}>
+                  +{formatInr(value)}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#8b949e', marginTop: '3px' }}>{label}</div>
+              </div>
+            ))}
           </div>
         </div>
 

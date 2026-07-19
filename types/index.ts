@@ -28,6 +28,8 @@ export interface Problem {
   };
   createdAt: string;
   isTop150: boolean;
+  leetcodeUrl: string | null;
+  neetcodeUrl: string | null;
 }
 
 export interface EnrichedProblem extends Problem {

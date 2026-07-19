@@ -37,6 +37,29 @@ function startOfTodayIso(): string {
   return d.toISOString();
 }
 
+// Week starts Monday.
+function startOfWeekIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const day = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  d.setDate(d.getDate() - day);
+  return d.toISOString();
+}
+
+function startOfMonthIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(1);
+  return d.toISOString();
+}
+
+function startOfYearIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setMonth(0, 1);
+  return d.toISOString();
+}
+
 async function sumProblemRewards(problemIds: string[]): Promise<number> {
   if (problemIds.length === 0) return 0;
   const { data } = await adminSupabase.from('problems').select('is_top150').in('id', problemIds);
@@ -88,6 +111,30 @@ export async function getEarnedToday(userId: string | undefined): Promise<number
     getTheoryEarned(userId, since),
   ]);
   return problems + theory;
+}
+
+export interface EarningsBreakdown {
+  today: number;
+  week: number;
+  month: number;
+  year: number;
+}
+
+export async function getEarningsBreakdown(userId: string | undefined): Promise<EarningsBreakdown> {
+  const [today, week, month, year] = await Promise.all([
+    startOfTodayIso(),
+    startOfWeekIso(),
+    startOfMonthIso(),
+    startOfYearIso(),
+  ].map(async (since) => {
+    const [problems, theory] = await Promise.all([
+      getProblemsEarned(userId, since),
+      getTheoryEarned(userId, since),
+    ]);
+    return problems + theory;
+  }));
+
+  return { today, week, month, year };
 }
 
 export { startOfTodayIso };

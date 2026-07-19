@@ -15,6 +15,8 @@ type DbRow = {
   optimal: Problem['optimal'];
   created_at: string;
   is_top150: boolean | null;
+  leetcode_url: string | null;
+  neetcode_url: string | null;
 };
 
 function rowToProblem(row: DbRow): Problem {
@@ -30,6 +32,8 @@ function rowToProblem(row: DbRow): Problem {
     optimal: row.optimal,
     createdAt: row.created_at,
     isTop150: row.is_top150 === true,
+    leetcodeUrl: row.leetcode_url ?? null,
+    neetcodeUrl: row.neetcode_url ?? null,
   };
 }
 
@@ -46,6 +50,8 @@ function problemToRow(p: Problem) {
     optimal: p.optimal,
     created_at: p.createdAt,
     is_top150: p.isTop150,
+    leetcode_url: p.leetcodeUrl,
+    neetcode_url: p.neetcodeUrl,
   };
 }
 
