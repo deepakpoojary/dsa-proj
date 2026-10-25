@@ -34,6 +34,17 @@ async function pushToServer(itemIds: string[], checked: boolean): Promise<boolea
   }
 }
 
+async function fetchServer(): Promise<Set<string> | null> {
+  try {
+    const res = await fetch('/api/checklist', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const { itemIds } = (await res.json()) as { itemIds: string[] };
+    return new Set(itemIds);
+  } catch {
+    return null;
+  }
+}
+
 // Checkbox state for roadmap / course / guide items. Signed-in users sync to
 // the `user_checklist` table; the browser copy is always kept too, so the
 // page works logged out or before that table has been created.
@@ -49,25 +60,35 @@ export function useChecklist(signedIn: boolean) {
 
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch('/api/checklist');
-        if (!res.ok || cancelled) return;
-        const { itemIds } = (await res.json()) as { itemIds: string[] };
-        const server = new Set(itemIds);
-        const merged = new Set([...server, ...local]);
-        const missing = [...local].filter((id) => !server.has(id));
-        if (missing.length > 0) await pushToServer(missing.slice(0, 500), true);
-        if (cancelled) return;
-        setChecked(merged);
-        writeLocal(merged);
-        setSynced(true);
-      } catch {
-        // Offline — keep the local copy.
-      }
+      const server = await fetchServer();
+      if (!server || cancelled) return;
+      // First load: union, so anything ticked offline / before the table
+      // existed gets uploaded rather than lost.
+      const missing = [...local].filter((id) => !server.has(id));
+      if (missing.length > 0) await pushToServer(missing.slice(0, 500), true);
+      if (cancelled) return;
+      const merged = new Set([...server, ...local]);
+      setChecked(merged);
+      writeLocal(merged);
+      setSynced(true);
     })();
     return () => {
       cancelled = true;
     };
+  }, [signedIn]);
+
+  // Explicit refresh: the server is the source of truth, so items unticked on
+  // another device disappear here too.
+  const refresh = useCallback(async () => {
+    if (!signedIn) {
+      setChecked(readLocal());
+      return;
+    }
+    const server = await fetchServer();
+    if (!server) return;
+    setChecked(server);
+    writeLocal(server);
+    setSynced(true);
   }, [signedIn]);
 
   const setMany = useCallback(
@@ -88,5 +109,5 @@ export function useChecklist(signedIn: boolean) {
 
   const toggle = useCallback((id: string) => setMany([id], !checked.has(id)), [checked, setMany]);
 
-  return { checked, toggle, setMany, synced };
+  return { checked, toggle, setMany, synced, refresh };
 }

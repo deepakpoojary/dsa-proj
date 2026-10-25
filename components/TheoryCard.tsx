@@ -125,7 +125,7 @@ export default function TheoryCard({
   )
 
   return (
-    <div>
+    <div id={`theory-q-${question.id}`}>
       {editMode && <AddBar pos="above" />}
 
       <div

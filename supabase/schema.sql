@@ -215,3 +215,64 @@ create policy "user_checklist_insert_own" on user_checklist
 drop policy if exists "user_checklist_delete_own" on user_checklist;
 create policy "user_checklist_delete_own" on user_checklist
   for delete using (auth.uid() = user_id);
+
+-- ── user_notes ───────────────────────────────────────────────────────────
+-- Free-text note per checklist item (same item_id space as user_checklist),
+-- shown in the note popup on the Salary Roadmap and on the Revision page.
+-- Independent of checked state: you can note an item before finishing it.
+create table if not exists user_notes (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  item_id text not null,
+  body text not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, item_id)
+);
+
+alter table user_notes enable row level security;
+
+drop policy if exists "user_notes_select_own" on user_notes;
+create policy "user_notes_select_own" on user_notes
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_notes_insert_own" on user_notes;
+create policy "user_notes_insert_own" on user_notes
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_notes_update_own" on user_notes;
+create policy "user_notes_update_own" on user_notes
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "user_notes_delete_own" on user_notes;
+create policy "user_notes_delete_own" on user_notes
+  for delete using (auth.uid() = user_id);
+
+-- ── user_reviews ─────────────────────────────────────────────────────────
+-- Spaced-repetition schedule per checklist item (Revision page). `state`
+-- holds the SM-2 fields (ease, interval, reps, lapses, timestamps) owned by
+-- lib/spaced-repetition.ts; due_at is lifted out so "what's due" is cheap.
+create table if not exists user_reviews (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  item_id text not null,
+  state jsonb not null,
+  due_at timestamptz not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, item_id)
+);
+
+alter table user_reviews enable row level security;
+
+drop policy if exists "user_reviews_select_own" on user_reviews;
+create policy "user_reviews_select_own" on user_reviews
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_reviews_insert_own" on user_reviews;
+create policy "user_reviews_insert_own" on user_reviews
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_reviews_update_own" on user_reviews;
+create policy "user_reviews_update_own" on user_reviews
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "user_reviews_delete_own" on user_reviews;
+create policy "user_reviews_delete_own" on user_reviews
+  for delete using (auth.uid() = user_id);

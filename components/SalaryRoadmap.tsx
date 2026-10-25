@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { NoteButton, NotesCtx, useNoteHost } from '@/components/Notes';
 import type { Roadmap, RoadmapInput, RoadmapLever } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
 import { backLever, unlockedLpa, BackedRow, DsaSource, LeverBacking } from '@/lib/roadmap-backing';
@@ -87,6 +88,7 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
   const [error, setError] = useState('');
   const [aiAvailable, setAiAvailable] = useState(true);
   const { checked, toggle, setMany } = useChecklist(signedIn);
+  const noteHost = useNoteHost(signedIn);
 
   useEffect(() => {
     // Restoring browser-only state after mount avoids a hydration mismatch.
@@ -170,12 +172,14 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
   const totalHours = studyLevers.reduce((a, l) => a + l.hours, 0);
 
   return (
+    <NotesCtx.Provider value={noteHost.value}>
     <div style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1rem 4rem' }}>
       <div style={{ maxWidth: '760px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <Link href="/" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>← DSA Problems</Link>
           <Link href="/theory" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>📖 Theory Q&amp;A</Link>
           <Link href="/dashboard" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>💰 Net Worth</Link>
+          <Link href="/revision" style={{ fontSize: '0.8rem', color: '#d29922', textDecoration: 'none', marginLeft: 'auto' }}>🔁 Revision</Link>
         </div>
 
         <div>
@@ -333,7 +337,9 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
           </>
         )}
       </div>
+      {noteHost.modal}
     </div>
+    </NotesCtx.Provider>
   );
 }
 
@@ -450,6 +456,7 @@ function LeverCard({
                   )}
                   <BackedRowView
                     row={row}
+                    context={lever.name}
                     color={color}
                     open={openRows.has(row.id)}
                     onToggleOpen={() => toggleRow(row.id)}
@@ -468,9 +475,10 @@ function LeverCard({
 }
 
 function BackedRowView({
-  row, color, open, onToggleOpen, checked, onToggle, onSetMany,
+  row, context, color, open, onToggleOpen, checked, onToggle, onSetMany,
 }: {
   row: BackedRow;
+  context: string;
   color: string;
   open: boolean;
   onToggleOpen: () => void;
@@ -478,6 +486,7 @@ function BackedRowView({
   onToggle: (id: string) => void;
   onSetMany: (ids: string[], value: boolean) => void;
 }) {
+  const notesCtx = useContext(NotesCtx);
   const complete = row.total > 0 && row.done >= row.total;
   const perItem = row.total > 0 ? row.lpa / row.total : 0;
 
@@ -492,6 +501,7 @@ function BackedRowView({
           {row.title}
           {row.href && <a href={row.href} style={{ marginLeft: '8px', fontSize: '0.72rem', color: '#58a6ff', textDecoration: 'none' }}>open →</a>}
         </span>
+        <NoteButton note={notesCtx.notes[item.id]} onClick={() => notesCtx.open({ id: item.id, title: row.title, context })} />
         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isChecked ? '#3fb950' : color, whiteSpace: 'nowrap' }}>+{money(row.lpa)}</span>
       </label>
     );
@@ -567,7 +577,8 @@ function BackedRowView({
                     <span style={{ flex: 1, fontSize: '0.8rem', color: isChecked ? '#8b949e' : '#e6edf3', textDecoration: isChecked ? 'line-through' : 'none' }}>
                       {it.title}
                     </span>
-                    <span style={{ fontSize: '0.7rem', color: isChecked ? '#3fb950' : '#6e7681', whiteSpace: 'nowrap' }}>+{rupeesPerYear(perItem)}</span>
+                    <NoteButton note={notesCtx.notes[it.id]} onClick={() => notesCtx.open({ id: it.id, title: it.title, context: `${context} · ${row.title}` })} />
+                    <span style={{ fontSize: '0.7rem', color: isChecked ? '#3fb950' : '#6e7681', whiteSpace: 'nowrap', minWidth: '78px', textAlign: 'right' }}>+{rupeesPerYear(perItem)}</span>
                   </label>
                 );
               })}

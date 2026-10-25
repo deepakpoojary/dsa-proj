@@ -218,6 +218,19 @@ export default function ProblemsView({
           >
             💸 Salary Roadmap
           </a>
+          <a
+            href="/revision"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px',
+              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
+              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
+          >
+            🔁 Revision
+          </a>
         </div>
 
         {/* Earned today */}
