@@ -276,3 +276,13 @@ create policy "user_reviews_update_own" on user_reviews
 drop policy if exists "user_reviews_delete_own" on user_reviews;
 create policy "user_reviews_delete_own" on user_reviews
   for delete using (auth.uid() = user_id);
+
+-- ── Lock down content tables ────────────────────────────────────────────
+-- problems / problem_topics / theory_questions / theory_topics are only read
+-- and written by the server with the service-role key, which bypasses RLS.
+-- Enabling RLS with no policies blocks the public anon key entirely — no
+-- reading locked (paid) content or editing/deleting rows from the browser.
+alter table problems enable row level security;
+alter table problem_topics enable row level security;
+alter table theory_questions enable row level security;
+alter table theory_topics enable row level security;
