@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Roadmap } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
@@ -11,6 +11,7 @@ import Planner from '@/components/Planner';
 import { buildCatalog, describeUnknown, CatalogItem } from '@/lib/item-catalog';
 import { useChecklist } from '@/lib/use-checklist';
 import { NoteButton, NotesCtx, useNoteHost } from '@/components/Notes';
+import type { NoteStatus } from '@/lib/use-notes';
 import ReviewSession from '@/components/ReviewSession';
 import { useReviews } from '@/lib/use-reviews';
 import { buildQueue, dueLabel, startOfToday, NEW_PER_DAY, ReviewState } from '@/lib/spaced-repetition';
@@ -550,48 +551,124 @@ function RevisionItem({
   checked: boolean;
   onToggle: () => void;
 }) {
+  const { notes, status, setNote, flush } = useContext(NotesCtx);
+  const [editing, setEditing] = useState(false);
+  const note = notes[item.id];
+  const hasNote = !!note && note.body.trim() !== '';
+
+  function finish() {
+    flush(item.id);
+    setEditing(false);
+  }
+
   return (
-    <NotesCtx.Consumer>
-      {({ notes, open }) => {
-        const note = notes[item.id];
-        const hasNote = !!note && note.body.trim() !== '';
-        const openNote = () => open({ id: item.id, title: item.title, context: [item.area, item.section].filter(Boolean).join(' · ') });
-        return (
+    <div
+      id={`rev-${item.id}`}
+      style={{
+        padding: '0.35rem 0.4rem', margin: '0 -0.4rem', borderBottom: '1px solid #21262d', borderRadius: '6px',
+        background: highlighted ? 'rgba(210,153,34,0.15)' : 'transparent', transition: 'background 0.6s',
+      }}
+    >
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
+        <input type="checkbox" checked={checked} onChange={onToggle} style={{ accentColor: '#3fb950' }} />
+        {item.kind && <span style={{ fontSize: '0.72rem' }}>{KIND_ICON[item.kind]}</span>}
+        <span style={{ flex: 1, fontSize: '0.85rem', color: '#e6edf3' }}>{item.title}</span>
+        {checked && (
+          <span style={{ fontSize: '0.68rem', whiteSpace: 'nowrap', color: !review ? '#58a6ff' : review.dueAt <= now ? '#3fb950' : '#6e7681' }}>
+            {dueLabel(review, now)}
+          </span>
+        )}
+        {!editing && <NoteButton note={note} onClick={() => setEditing(true)} />}
+      </label>
+
+      {editing ? (
+        <InlineNoteEditor
+          initial={note?.body ?? ''}
+          status={status[item.id]}
+          onChange={(body) => setNote(item.id, body)}
+          onDone={finish}
+        />
+      ) : (
+        hasNote && (
           <div
-            id={`rev-${item.id}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => setEditing(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(true); }}
+            title="Click to edit"
             style={{
-              padding: '0.35rem 0.4rem', margin: '0 -0.4rem', borderBottom: '1px solid #21262d', borderRadius: '6px',
-              background: highlighted ? 'rgba(210,153,34,0.15)' : 'transparent', transition: 'background 0.6s',
+              margin: '0.35rem 0 0.25rem 1.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px',
+              border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: '0.8rem',
+              lineHeight: 1.55, whiteSpace: 'pre-wrap', cursor: 'text',
             }}
           >
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={checked} onChange={onToggle} style={{ accentColor: '#3fb950' }} />
-              {item.kind && <span style={{ fontSize: '0.72rem' }}>{KIND_ICON[item.kind]}</span>}
-              <span style={{ flex: 1, fontSize: '0.85rem', color: '#e6edf3' }}>{item.title}</span>
-              {checked && (
-                <span style={{ fontSize: '0.68rem', whiteSpace: 'nowrap', color: !review ? '#58a6ff' : review.dueAt <= now ? '#3fb950' : '#6e7681' }}>
-                  {dueLabel(review, now)}
-                </span>
-              )}
-              <NoteButton note={note} onClick={openNote} />
-            </label>
-            {hasNote && (
-              <button
-                type="button"
-                onClick={openNote}
-                style={{
-                  display: 'block', width: 'calc(100% - 1.6rem)', margin: '0.35rem 0 0.25rem 1.6rem', textAlign: 'left',
-                  padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid #30363d', background: '#0d1117',
-                  color: '#c9d1d9', fontSize: '0.8rem', lineHeight: 1.55, whiteSpace: 'pre-wrap', cursor: 'text',
-                  fontFamily: 'inherit',
-                }}
-              >
-                {note.body}
-              </button>
-            )}
+            {note!.body}
           </div>
-        );
-      }}
-    </NotesCtx.Consumer>
+        )
+      )}
+    </div>
+  );
+}
+
+const STATUS_TEXT: Record<NoteStatus, string> = { saving: 'Saving…', saved: 'Saved', local: 'Saved on this device' };
+
+// In-place note editor: grows with its content, saves as you type, and
+// closes on Esc / Ctrl+Enter / clicking away.
+function InlineNoteEditor({
+  initial, status, onChange, onDone,
+}: {
+  initial: string;
+  status?: NoteStatus;
+  onChange: (body: string) => void;
+  onDone: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const grow = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    grow();
+  }, []);
+
+  return (
+    <div style={{ margin: '0.35rem 0 0.25rem 1.6rem' }}>
+      <textarea
+        ref={ref}
+        value={text}
+        rows={3}
+        placeholder="Key idea, pattern, edge cases, complexity, mistakes you made…"
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(e.target.value);
+          grow();
+        }}
+        onBlur={onDone}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+            e.preventDefault();
+            onDone();
+          }
+        }}
+        style={{
+          display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', overflow: 'hidden',
+          padding: '0.55rem 0.7rem', borderRadius: '8px', border: '1px solid #30363d', background: '#0d1117',
+          color: '#e6edf3', fontSize: '0.8rem', lineHeight: 1.55, fontFamily: 'inherit', outline: 'none',
+        }}
+      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: '#6e7681', marginTop: '3px' }}>
+        <span>{status ? STATUS_TEXT[status] : 'Saves as you type'}</span>
+        <span>Esc or click away to finish</span>
+      </div>
+    </div>
   );
 }

@@ -9,9 +9,20 @@ export interface NoteTarget {
   context?: string;
 }
 
-export const NotesCtx = createContext<{ notes: Record<string, Note>; open: (t: NoteTarget) => void }>({
+export interface NotesApi {
+  notes: Record<string, Note>;
+  status: Record<string, NoteStatus>;
+  open: (t: NoteTarget) => void;
+  setNote: (id: string, body: string) => void;
+  flush: (id: string) => void;
+}
+
+export const NotesCtx = createContext<NotesApi>({
   notes: {},
+  status: {},
   open: () => {},
+  setNote: () => {},
+  flush: () => {},
 });
 
 // Owns note state + the popup for a page. Wrap the page in
@@ -25,7 +36,10 @@ export function useNoteHost(signedIn: boolean) {
     setTarget(null);
   }, [target, flush]);
 
-  const value = useMemo(() => ({ notes, open: setTarget }), [notes]);
+  const value = useMemo<NotesApi>(
+    () => ({ notes, status, open: setTarget, setNote, flush }),
+    [notes, status, setNote, flush]
+  );
 
   const modal = target ? (
     <NoteModal
