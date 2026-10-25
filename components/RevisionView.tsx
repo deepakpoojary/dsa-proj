@@ -219,6 +219,16 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
     }
   }
 
+  // Uses the browser's print dialog ("Save as PDF"); the title becomes the
+  // suggested file name.
+  function exportPdf() {
+    const prevTitle = document.title;
+    const label = area !== 'All' ? ` - ${area}` : '';
+    document.title = `Revision notes${label} - ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    window.addEventListener('afterprint', () => { document.title = prevTitle; }, { once: true });
+    window.print();
+  }
+
   function openRandom() {
     const pool = visible.length ? visible : touched;
     if (!pool.length) return;
@@ -228,7 +238,7 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
 
   return (
     <NotesCtx.Provider value={noteHost.value}>
-      <div style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1rem 4rem' }}>
+      <div className="rev-screen" style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1rem 4rem' }}>
         <div style={{ maxWidth: '760px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <Link href="/roadmap" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>← Salary Roadmap</Link>
@@ -268,6 +278,19 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
                   }}
                 >
                   🎲 Random
+                </button>
+              )}
+              {tab === 'review' && visible.length > 0 && (
+                <button
+                  type="button"
+                  onClick={exportPdf}
+                  title="Save what's shown below as a clean PDF"
+                  style={{
+                    padding: '0.45rem 0.9rem', borderRadius: '8px', border: '1px solid #30363d', background: '#21262d',
+                    color: '#e6edf3', fontSize: '0.8rem', cursor: 'pointer',
+                  }}
+                >
+                  ⬇ Export PDF
                 </button>
               )}
             </div>
@@ -388,7 +411,81 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
         )}
         {noteHost.modal}
       </div>
+      <PrintableRevision
+        grouped={grouped}
+        checked={checked}
+        notes={notes}
+        scope={[
+          FILTERS.find((f) => f.key === filter)!.label,
+          area !== 'All' ? area : null,
+          q ? `"${query.trim()}"` : null,
+        ].filter(Boolean).join(' · ')}
+        count={visible.length}
+      />
     </NotesCtx.Provider>
+  );
+}
+
+// Print-only document for "Export PDF": light, distraction-free, one area per
+// page. Hidden on screen; the app UI is hidden when printing.
+function PrintableRevision({
+  grouped, checked, notes, scope, count,
+}: {
+  grouped: Map<string, Map<string, CatalogItem[]>>;
+  checked: Set<string>;
+  notes: Record<string, { body: string }>;
+  scope: string;
+  count: number;
+}) {
+  return (
+    <div className="rev-print">
+      <style>{`
+        .rev-print { display: none; }
+        @media print {
+          @page { margin: 16mm 14mm; }
+          html, body { background: #fff !important; }
+          .rev-screen { display: none !important; }
+          .rev-print { display: block; color: #1f2328; font-family: Georgia, 'Times New Roman', serif; }
+          .rev-print h1 { font-size: 20pt; margin: 0 0 2pt; }
+          .rev-print .meta { font: 9pt system-ui, sans-serif; color: #59636e; margin-bottom: 14pt; }
+          .rev-print .area { break-before: page; }
+          .rev-print .area:first-of-type { break-before: auto; }
+          .rev-print h2 { font: 600 14pt system-ui, sans-serif; border-bottom: 1.5pt solid #1f2328; padding-bottom: 3pt; margin: 0 0 8pt; }
+          .rev-print h3 { font: 600 8.5pt system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: #59636e; margin: 12pt 0 4pt; break-after: avoid; }
+          .rev-print .item { break-inside: avoid; padding: 5pt 0; border-bottom: 0.5pt solid #d1d9e0; }
+          .rev-print .title { font-size: 11pt; font-weight: 600; }
+          .rev-print .box { display: inline-block; width: 9pt; margin-right: 5pt; font-family: system-ui, sans-serif; }
+          .rev-print .note { font-size: 10.5pt; line-height: 1.55; white-space: pre-wrap; margin: 4pt 0 2pt 14pt; padding-left: 8pt; border-left: 2pt solid #d1d9e0; }
+          .rev-print .blank { margin: 4pt 0 2pt 14pt; height: 28pt; border-left: 2pt dashed #d1d9e0; }
+        }
+      `}</style>
+      <h1>Revision notes</h1>
+      <div className="meta">
+        {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })} · {count} item{count === 1 ? '' : 's'} · {scope}
+      </div>
+      {[...grouped].map(([areaName, sections]) => (
+        <section key={areaName} className="area">
+          <h2>{areaName}</h2>
+          {[...sections].map(([sectionName, items]) => (
+            <div key={sectionName}>
+              {sectionName && <h3>{sectionName}</h3>}
+              {items.map((item) => {
+                const body = notes[item.id]?.body.trim();
+                return (
+                  <div key={item.id} className="item">
+                    <div className="title">
+                      <span className="box">{checked.has(item.id) ? '☑' : '☐'}</span>
+                      {item.title}
+                    </div>
+                    {body ? <div className="note">{body}</div> : <div className="blank" />}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
   );
 }
 
