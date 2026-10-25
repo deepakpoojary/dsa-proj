@@ -2,6 +2,8 @@ import { getCurrentUser } from '@/lib/auth-helpers';
 import { getStudyStats } from '@/lib/study-stats';
 import RevisionView from '@/components/RevisionView';
 
+export const metadata = { title: 'revision' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function RevisionPage() {

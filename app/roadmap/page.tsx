@@ -2,6 +2,8 @@ import { getCurrentUser } from '@/lib/auth-helpers';
 import { getStudyStats } from '@/lib/study-stats';
 import SalaryRoadmap from '@/components/SalaryRoadmap';
 
+export const metadata = { title: 'roadmap' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function RoadmapPage() {

@@ -3,6 +3,8 @@ import { getCurrentUser, getSolvedTheoryIds, getSolvedTodayTheoryIds, isAdminSes
 import { getUserFinance, getProblemsEarned, startOfTodayIso } from '@/lib/finance'
 import TheoryView from '@/components/TheoryView'
 
+export const metadata = { title: 'theory' };
+
 export const dynamic = 'force-dynamic'
 
 export default async function TheoryPage() {

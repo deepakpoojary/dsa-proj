@@ -2,6 +2,8 @@ import { getCurrentUser } from '@/lib/auth-helpers';
 import { getUserFinance, getTotalEarned, getEarningsBreakdown, getAllEarningsSeries } from '@/lib/finance';
 import NetWorthDashboard from '@/components/NetWorthDashboard';
 
+export const metadata = { title: 'dashboard' };
+
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
