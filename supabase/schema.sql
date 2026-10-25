@@ -189,3 +189,29 @@ create policy "user_finance_insert_own" on user_finance
 drop policy if exists "user_finance_update_own" on user_finance;
 create policy "user_finance_update_own" on user_finance
   for update using (auth.uid() = user_id);
+
+-- ── user_checklist ───────────────────────────────────────────────────────
+-- Generic per-user checkbox state for the Salary Roadmap: course syllabus
+-- items ("course:dsa/..."), study-guide tasks ("guide:cloud/...") and
+-- roadmap subtopics. item_id is a free-form stable string owned by app code,
+-- so new checklists never need a migration. Existence of a row = checked.
+create table if not exists user_checklist (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  item_id text not null,
+  checked_at timestamptz not null default now(),
+  primary key (user_id, item_id)
+);
+
+alter table user_checklist enable row level security;
+
+drop policy if exists "user_checklist_select_own" on user_checklist;
+create policy "user_checklist_select_own" on user_checklist
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_checklist_insert_own" on user_checklist;
+create policy "user_checklist_insert_own" on user_checklist
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_checklist_delete_own" on user_checklist;
+create policy "user_checklist_delete_own" on user_checklist
+  for delete using (auth.uid() = user_id);
