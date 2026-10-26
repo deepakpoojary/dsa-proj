@@ -77,9 +77,10 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
   }, [signedIn]);
 
   useEffect(() => {
+    // Also needed on Review: tick timestamps drive newest-first ordering.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (tab !== 'review' && rawEvents === null) void loadActivity();
-  }, [tab, rawEvents, loadActivity]);
+    if (rawEvents === null) void loadActivity();
+  }, [rawEvents, loadActivity]);
 
   async function refreshAll() {
     setRefreshing(true);
@@ -87,7 +88,7 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
       refreshChecklist(),
       noteHost.refresh(),
       refreshReviews(),
-      tab !== 'review' || rawEvents !== null ? loadActivity() : Promise.resolve(),
+      loadActivity(),
     ]);
     setNow(clock());
     setSyncedAt(clock());
@@ -114,14 +115,33 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
   const catalog = useMemo(() => buildCatalog(roadmap), [roadmap]);
   const order = useMemo(() => new Map([...catalog.keys()].map((id, i) => [id, i])), [catalog]);
 
-  // Everything the user has touched: ticked, or written a note on.
+  // A note's sort time is pinned when it's first seen, so editing a note
+  // doesn't make it jump to the top while you type.
+  const [noteSeenAt, setNoteSeenAt] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const unseen = Object.entries(notes).filter(([id]) => !(id in noteSeenAt));
+    if (!unseen.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNoteSeenAt((prev) => ({ ...prev, ...Object.fromEntries(unseen.map(([id, n]) => [id, n.updatedAt])) }));
+  }, [notes, noteSeenAt]);
+
+  // When each item was ticked (from activity history).
+  const checkedAt = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of rawEvents ?? []) if (e.kind === 'item') m.set(e.id, e.at);
+    return m;
+  }, [rawEvents]);
+
+  // Everything the user has touched: ticked, or written a note on — newest
+  // first (latest of tick time / note time), falling back to reverse course order.
   const touched = useMemo(() => {
     const ids = new Set<string>([...checked, ...Object.keys(notes).filter((id) => notes[id].body.trim() !== '')]);
+    const recency = (id: string) => Math.max(checked.has(id) ? checkedAt.get(id) ?? 0 : 0, noteSeenAt[id] ?? 0);
     return [...ids]
       .filter((id) => !id.startsWith('site:') && !id.startsWith('theory:'))
       .map((id) => catalog.get(id) ?? describeUnknown(id))
-      .sort((a, b) => (order.get(a.id) ?? 1e9) - (order.get(b.id) ?? 1e9));
-  }, [checked, notes, catalog, order]);
+      .sort((a, b) => recency(b.id) - recency(a.id) || (order.get(b.id) ?? -1) - (order.get(a.id) ?? -1));
+  }, [checked, notes, catalog, order, checkedAt, noteSeenAt]);
 
   const doneCount = touched.filter((i) => checked.has(i.id)).length;
   const notedCount = touched.filter((i) => notes[i.id]?.body.trim()).length;
