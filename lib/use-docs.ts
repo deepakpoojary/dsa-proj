@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type DocKind = 'journal' | 'goal';
+export type DocKind = 'journal' | 'goal' | 'ink';
 export type DocStatus = 'saving' | 'saved' | 'local';
 
 interface Stored<T> {
@@ -26,7 +26,14 @@ function writeLocal<T>(kind: DocKind, docs: Record<string, Stored<T>>) {
   try {
     localStorage.setItem(localKey(kind), JSON.stringify(docs));
   } catch {
-    // Storage blocked — docs still live in memory for this visit.
+    // Storage blocked or full — docs still live in memory (and on the server
+    // when signed in). Handwriting is what fills it, so drop that copy rather
+    // than let it crowd out journal text and goals.
+    if (kind === 'ink') {
+      try {
+        localStorage.removeItem(localKey(kind));
+      } catch {}
+    }
   }
 }
 

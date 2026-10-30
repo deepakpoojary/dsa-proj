@@ -14,6 +14,9 @@ export interface JournalEntry {
   work: string;
   improve: string;
   random: string;
+  // Which prompts have a handwritten answer (strokes live in kind 'ink',
+  // lib/ink.ts) — kept here so streaks and "empty" checks see them.
+  ink?: Partial<Record<PromptKey, boolean>>;
 }
 
 export const EMPTY_ENTRY: JournalEntry = { todos: [], grateful: '', work: '', improve: '', random: '' };
@@ -23,7 +26,9 @@ export function withDefaults(e: Partial<JournalEntry> | undefined): JournalEntry
   return { ...EMPTY_ENTRY, ...e };
 }
 
-type PromptKey = 'grateful' | 'work' | 'improve' | 'random';
+export type PromptKey = 'grateful' | 'work' | 'improve' | 'random';
+
+export const hasAnswer = (e: JournalEntry, key: PromptKey) => e[key].trim() !== '' || !!e.ink?.[key];
 
 // `optional` prompts don't count towards the reflection score or streak.
 export const PROMPTS: { key: PromptKey; icon: string; title: string; placeholder: string; optional?: boolean }[] = [
@@ -60,13 +65,13 @@ export function formatDay(key: string): string {
 export function isEntryEmpty(e: JournalEntry | undefined): boolean {
   if (!e) return true;
   const full = withDefaults(e);
-  return full.todos.length === 0 && PROMPTS.every((p) => !full[p.key].trim());
+  return full.todos.length === 0 && PROMPTS.every((p) => !hasAnswer(full, p.key));
 }
 
 export function reflectionDone(e: JournalEntry | undefined): number {
   if (!e) return 0;
   const full = withDefaults(e);
-  return CORE_PROMPTS.filter((p) => full[p.key].trim() !== '').length;
+  return CORE_PROMPTS.filter((p) => hasAnswer(full, p.key)).length;
 }
 
 // Consecutive days, ending today (or yesterday if today isn't written yet),

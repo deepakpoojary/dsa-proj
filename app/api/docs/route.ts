@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import { supabase as adminSupabase } from '@/lib/supabase';
 
-const KINDS = new Set(['journal', 'goal']);
+const KINDS = new Set(['journal', 'goal', 'ink']);
 const MAX_DOC_ID = 100;
-const MAX_DATA = 50000;
+// Handwriting (kind 'ink') is vector strokes, so it gets far more room.
+const MAX_DATA: Record<string, number> = { journal: 50000, goal: 50000, ink: 1500000 };
 
 // GET /api/docs?kind=journal
 export async function GET(req: NextRequest) {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (
     typeof kind !== 'string' || !KINDS.has(kind) ||
     typeof docId !== 'string' || docId.length === 0 || docId.length > MAX_DOC_ID ||
-    (data !== null && (typeof data !== 'object' || JSON.stringify(data).length > MAX_DATA))
+    (data !== null && (typeof data !== 'object' || JSON.stringify(data).length > MAX_DATA[kind]))
   ) {
     return NextResponse.json({ error: 'Invalid kind, docId or data' }, { status: 400 });
   }

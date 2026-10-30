@@ -7,9 +7,14 @@ import { useDocs, DOC_STATUS_LABEL } from '@/lib/use-docs';
 import { useReviews } from '@/lib/use-reviews';
 import { startOfToday } from '@/lib/spaced-repetition';
 import {
-  JournalEntry, Todo, PROMPTS, withDefaults, dayKey, shiftDay, formatDay, isEntryEmpty, reflectionDone, journalStreak, newId,
+  JournalEntry, PromptKey, Todo, PROMPTS, withDefaults, dayKey, shiftDay, formatDay, isEntryEmpty, reflectionDone, journalStreak, newId,
 } from '@/lib/journal';
 import { Goal, areaOf, sortGoals } from '@/lib/goals';
+import { Ink, inkDocId } from '@/lib/ink';
+import InkPad from '@/components/InkPad';
+
+type InputMode = 'type' | 'write';
+const MODE_KEY = 'journal:input-mode';
 
 export interface TodayActivity {
   problemsSolved: number;
@@ -150,6 +155,35 @@ export default function JournalView({ signedIn, activity }: { signedIn: boolean;
     setDoc(day, isEntryEmpty(next) ? null : next);
   };
 
+  const { docs: inks, setDoc: setInk } = useDocs<Ink>('ink', signedIn);
+  const [modes, setModes] = useState<Partial<Record<PromptKey, InputMode>>>({});
+  const [preferred, setPreferred] = useState<InputMode>(() => {
+    try {
+      return localStorage.getItem(MODE_KEY) === 'write' ? 'write' : 'type';
+    } catch {
+      return 'type';
+    }
+  });
+  // An answer opens in whichever form it was given; blank ones use the last
+  // mode picked.
+  const modeFor = (key: PromptKey): InputMode =>
+    modes[key] ?? (entry.ink?.[key] && !entry[key].trim() ? 'write' : entry[key].trim() ? 'type' : preferred);
+  const pickMode = (key: PromptKey, m: InputMode) => {
+    setModes((s) => ({ ...s, [key]: m }));
+    setPreferred(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {}
+  };
+  const changeInk = (key: PromptKey, ink: Ink | null) => {
+    if (!day) return;
+    setInk(inkDocId(day, key), ink);
+    const flags = { ...entry.ink };
+    if (ink) flags[key] = true;
+    else delete flags[key];
+    update({ ink: Object.keys(flags).length ? flags : undefined });
+  };
+
   const reviewsToday = useMemo(() => {
     const start = startOfToday();
     return Object.values(reviews).filter((r) => r.lastReviewedAt >= start).length;
@@ -251,8 +285,27 @@ export default function JournalView({ signedIn, activity }: { signedIn: boolean;
             {PROMPTS.map((p) => (
               <div key={p.key} style={{ ...card, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#e6edf3' }}>{p.icon} {p.title}</div>
-                  {p.key === 'work' && isToday && activityLine && (
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#e6edf3', flex: 1 }}>{p.icon} {p.title}</div>
+                  <div role="group" aria-label="Input mode" style={{ display: 'flex', border: '1px solid #30363d', borderRadius: '8px', overflow: 'hidden' }}>
+                    {(['type', 'write'] as const).map((m) => {
+                      const on = modeFor(p.key) === m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => pickMode(p.key, m)}
+                          style={{
+                            background: on ? 'rgba(88,166,255,0.12)' : 'none', border: 'none', cursor: 'pointer',
+                            color: on ? '#58a6ff' : '#8b949e', fontSize: '0.72rem', padding: '3px 9px',
+                          }}
+                        >
+                          {m === 'type' ? '⌨ Type' : '✍ Write'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {p.key === 'work' && isToday && activityLine && modeFor(p.key) === 'type' && (
                     <button
                       type="button"
                       style={ghostBtn}
@@ -266,13 +319,32 @@ export default function JournalView({ signedIn, activity }: { signedIn: boolean;
                     </button>
                   )}
                 </div>
-                <textarea
-                  value={entry[p.key]}
-                  onChange={(e) => update({ [p.key]: e.target.value })}
-                  placeholder={p.placeholder}
-                  rows={3}
-                  style={{ ...input, resize: 'vertical', minHeight: '84px', lineHeight: 1.55 }}
-                />
+                {modeFor(p.key) === 'type' ? (
+                  <textarea
+                    value={entry[p.key]}
+                    onChange={(e) => update({ [p.key]: e.target.value })}
+                    placeholder={p.placeholder}
+                    rows={3}
+                    style={{ ...input, resize: 'vertical', minHeight: '84px', lineHeight: 1.55 }}
+                  />
+                ) : (
+                  <InkPad
+                    key={`${day}:${p.key}`}
+                    title={`${p.icon} ${p.title} · ${formatDay(day)}`}
+                    ink={inks[inkDocId(day, p.key)]}
+                    onChange={(ink) => changeInk(p.key, ink)}
+                  />
+                )}
+                {modeFor(p.key) === 'type' && entry.ink?.[p.key] && (
+                  <button type="button" onClick={() => pickMode(p.key, 'write')} style={{ ...ghostBtn, alignSelf: 'flex-start' }}>
+                    ✍ Also has handwriting: show it
+                  </button>
+                )}
+                {modeFor(p.key) === 'write' && entry[p.key].trim() && (
+                  <button type="button" onClick={() => pickMode(p.key, 'type')} style={{ ...ghostBtn, alignSelf: 'flex-start' }}>
+                    ⌨ Also has typed text: show it
+                  </button>
+                )}
               </div>
             ))}
           </div>
