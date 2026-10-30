@@ -56,3 +56,42 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* Shared section nav (components/SiteNav.tsx) */
+.site-nav-link:not([aria-current='page']):hover {
+  color: var(--text) !important;
+  background: rgba(139, 148, 158, 0.1) !important;
+}
+
+/* Dashboard (components/Dashboard.tsx) */
+.dash-card {
+  transition: border-color 0.15s;
+}
+.dash-card:hover {
+  border-color: #8b949e !important;
+}
+.dash-row:hover span:first-child {
+  color: var(--accent) !important;
+}
+
+/* Journal + Goals (components/JournalView.tsx, GoalsView.tsx) */
+@media (max-width: 760px) {
+  .journal-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+.todo-row .todo-del {
+  opacity: 0;
+}
+.todo-row:hover .todo-del,
+.todo-row .todo-del:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .todo-row .todo-del {
+    opacity: 1;
+  }
+}
+.journal-day:hover {
+  background: rgba(139, 148, 158, 0.1) !important;
+}

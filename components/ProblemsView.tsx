@@ -5,6 +5,7 @@ import Fuse from 'fuse.js';
 import { EnrichedProblem, rewardFor } from '@/types';
 import ProblemCard from './ProblemCard';
 import UserNav from './UserNav';
+import SiteNav from './SiteNav';
 
 function topicId(topic: string) {
   return `topic-${topic.toLowerCase().replace(/\s+/g, '-')}`;
@@ -179,59 +180,9 @@ export default function ProblemsView({
           <div style={{ fontSize: '0.72rem', color: '#8b949e' }}>
             {problems.length} problems · scroll to read
           </div>
-          <a
-            href="/theory"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '8px',
-              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
-          >
-            📖 Theory Q&amp;A
-          </a>
-          <a
-            href="/dashboard"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px',
-              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
-          >
-            💰 Net Worth
-          </a>
-          <a
-            href="/roadmap"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px',
-              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
-          >
-            💸 Salary Roadmap
-          </a>
-          <a
-            href="/revision"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px',
-              fontSize: '0.75rem', color: '#8b949e', textDecoration: 'none',
-              padding: '4px 10px', borderRadius: '6px', border: '1px solid #30363d',
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#e6edf3'; el.style.borderColor = '#8b949e'; }}
-            onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = '#8b949e'; el.style.borderColor = '#30363d'; }}
-          >
-            🔁 Revision
-          </a>
         </div>
+
+        <SiteNav variant="sidebar" />
 
         {/* Earned today */}
         <div
@@ -250,7 +201,7 @@ export default function ProblemsView({
 
         {/* Net worth */}
         <a
-          href="/dashboard"
+          href="/net-worth"
           style={{
             display: 'block', padding: '10px 12px', borderRadius: '8px', textDecoration: 'none',
             background: netWorth < 0 ? 'rgba(248,81,73,0.08)' : 'rgba(63,185,80,0.08)',

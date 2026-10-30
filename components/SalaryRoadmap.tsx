@@ -1,7 +1,7 @@
 'use client';
 
 import { useContext, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import SiteNav from '@/components/SiteNav';
 import { NoteButton, NotesCtx, useNoteHost } from '@/components/Notes';
 import type { Roadmap, RoadmapInput, RoadmapLever } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
@@ -175,12 +175,7 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
     <NotesCtx.Provider value={noteHost.value}>
     <div style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1rem 4rem' }}>
       <div style={{ maxWidth: '760px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <Link href="/" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>← DSA Problems</Link>
-          <Link href="/theory" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>📖 Theory Q&amp;A</Link>
-          <Link href="/dashboard" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>💰 Net Worth</Link>
-          <Link href="/revision" style={{ fontSize: '0.8rem', color: '#d29922', textDecoration: 'none', marginLeft: 'auto' }}>🔁 Revision</Link>
-        </div>
+        <SiteNav />
 
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#e6edf3', margin: 0 }}>💸 Salary Roadmap</h1>
@@ -501,7 +496,11 @@ function BackedRowView({
           {row.title}
           {row.href && <a href={row.href} style={{ marginLeft: '8px', fontSize: '0.72rem', color: '#58a6ff', textDecoration: 'none' }}>open →</a>}
         </span>
-        <NoteButton note={notesCtx.notes[item.id]} onClick={() => notesCtx.open({ id: item.id, title: row.title, context })} />
+        <NoteButton
+          note={notesCtx.notes[item.id]}
+          onClick={() => notesCtx.open({ id: item.id, title: row.title, context })}
+          onView={() => notesCtx.open({ id: item.id, title: row.title, context, mode: 'view' })}
+        />
         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isChecked ? '#3fb950' : color, whiteSpace: 'nowrap' }}>+{money(row.lpa)}</span>
       </label>
     );
@@ -577,7 +576,11 @@ function BackedRowView({
                     <span style={{ flex: 1, fontSize: '0.8rem', color: isChecked ? '#8b949e' : '#e6edf3', textDecoration: isChecked ? 'line-through' : 'none' }}>
                       {it.title}
                     </span>
-                    <NoteButton note={notesCtx.notes[it.id]} onClick={() => notesCtx.open({ id: it.id, title: it.title, context: `${context} · ${row.title}` })} />
+                    <NoteButton
+                      note={notesCtx.notes[it.id]}
+                      onClick={() => notesCtx.open({ id: it.id, title: it.title, context: `${context} · ${row.title}` })}
+                      onView={() => notesCtx.open({ id: it.id, title: it.title, context: `${context} · ${row.title}`, mode: 'view' })}
+                    />
                     <span style={{ fontSize: '0.7rem', color: isChecked ? '#3fb950' : '#6e7681', whiteSpace: 'nowrap', minWidth: '78px', textAlign: 'right' }}>+{rupeesPerYear(perItem)}</span>
                   </label>
                 );

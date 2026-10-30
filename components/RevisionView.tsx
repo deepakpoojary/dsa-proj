@@ -2,6 +2,7 @@
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import SiteNav from '@/components/SiteNav';
 import type { Roadmap } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
 import type { ActivityEvent } from '@/app/api/activity/route';
@@ -261,11 +262,7 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
     <NotesCtx.Provider value={noteHost.value}>
       <div className="rev-screen" style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1rem 4rem' }}>
         <div style={{ maxWidth: '760px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <Link href="/roadmap" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>← Salary Roadmap</Link>
-            <Link href="/" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>DSA Problems</Link>
-            <Link href="/theory" style={{ fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none' }}>Theory Q&amp;A</Link>
-          </div>
+          <SiteNav />
 
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
             <div>

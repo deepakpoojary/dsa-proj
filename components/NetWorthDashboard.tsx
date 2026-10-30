@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { UserFinance, EarningsBreakdown, EarningsRange, EarningsSeries } from '@/lib/finance';
 import EarningsChart from '@/components/EarningsChart';
+import SiteNav from '@/components/SiteNav';
 
 function formatInr(n: number) {
   const sign = n < 0 ? '-' : '';
@@ -69,15 +70,9 @@ export default function NetWorthDashboard({
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', padding: '2rem 1.5rem 4rem' }}>
       <div style={{ maxWidth: '640px', margin: '0 auto' }}>
-        <a
-          href="/"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '1.5rem',
-            fontSize: '0.8rem', color: '#8b949e', textDecoration: 'none',
-          }}
-        >
-          ← Back
-        </a>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <SiteNav />
+        </div>
 
         <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#e6edf3', margin: 0 }}>
           💰 Net Worth Dashboard

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { TheoryData, TheoryQuestion, rewardForTheory } from '@/types/theory'
 import { createClient } from '@/lib/supabase/client'
 import TheoryCard from './TheoryCard'
+import SiteNav from './SiteNav'
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -190,71 +191,7 @@ export default function TheoryView({
           </div>
         </div>
 
-        {/* Nav */}
-        <a
-          href="/"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.8rem',
-            color: '#8b949e',
-            textDecoration: 'none',
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
-        >
-          ← DSA ProblemS
-        </a>
-        <a
-          href="/dashboard"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.8rem',
-            color: '#8b949e',
-            textDecoration: 'none',
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
-        >
-          💰 Net Worth
-        </a>
-        <a
-          href="/roadmap"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.8rem',
-            color: '#8b949e',
-            textDecoration: 'none',
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
-        >
-          💸 Salary Roadmap
-        </a>
-        <a
-          href="/revision"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.8rem',
-            color: '#8b949e',
-            textDecoration: 'none',
-            transition: 'color 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = '#e6edf3')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = '#8b949e')}
-        >
-          🔁 Revision
-        </a>
+        <SiteNav variant="sidebar" />
 
         {/* Earned today */}
         <div
@@ -275,7 +212,7 @@ export default function TheoryView({
 
         {/* Net worth */}
         <a
-          href="/dashboard"
+          href="/net-worth"
           style={{
             display: 'block',
             padding: '10px 12px',

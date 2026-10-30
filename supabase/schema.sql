@@ -286,3 +286,35 @@ alter table problems enable row level security;
 alter table problem_topics enable row level security;
 alter table theory_questions enable row level security;
 alter table theory_topics enable row level security;
+
+-- ── user_docs ────────────────────────────────────────────────────────────
+-- Small per-user JSON documents grouped by `kind`: 'journal' (doc_id is the
+-- local date, YYYY-MM-DD, holding that day's todos + reflection) and 'goal'
+-- (doc_id is a random id). Shapes live in lib/journal.ts and lib/goals.ts;
+-- sync logic in lib/use-docs.ts (newest updated_at wins).
+create table if not exists user_docs (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null,
+  doc_id text not null,
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, kind, doc_id)
+);
+
+alter table user_docs enable row level security;
+
+drop policy if exists "user_docs_select_own" on user_docs;
+create policy "user_docs_select_own" on user_docs
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "user_docs_insert_own" on user_docs;
+create policy "user_docs_insert_own" on user_docs
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "user_docs_update_own" on user_docs;
+create policy "user_docs_update_own" on user_docs
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "user_docs_delete_own" on user_docs;
+create policy "user_docs_delete_own" on user_docs
+  for delete using (auth.uid() = user_id);
