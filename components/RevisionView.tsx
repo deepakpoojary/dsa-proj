@@ -3,6 +3,8 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import SiteNav from '@/components/SiteNav';
+import AnnotatedText from '@/components/AnnotatedText';
+import { flatten } from '@/lib/annotations';
 import type { Roadmap } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
 import type { ActivityEvent } from '@/app/api/activity/route';
@@ -488,7 +490,8 @@ function PrintableRevision({
             <div key={sectionName}>
               {sectionName && <h3>{sectionName}</h3>}
               {items.map((item) => {
-                const body = notes[item.id]?.body.trim();
+                const raw = notes[item.id]?.body.trim();
+                const body = raw && flatten(raw, (t, c) => `${t} [${c}]`);
                 return (
                   <div key={item.id} className="item">
                     <div className="title">
@@ -612,14 +615,14 @@ function RevisionItem({
             tabIndex={0}
             onClick={() => setEditing(true)}
             onKeyDown={(e) => { if (e.key === 'Enter') setEditing(true); }}
-            title="Click to edit"
+            title="Click to edit · select words to comment"
             style={{
               margin: '0.35rem 0 0.25rem 1.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px',
               border: '1px solid #30363d', background: '#0d1117', color: '#c9d1d9', fontSize: '0.8rem',
               lineHeight: 1.55, whiteSpace: 'pre-wrap', cursor: 'text',
             }}
           >
-            {note!.body}
+            <AnnotatedText body={note!.body} onChange={(body) => setNote(item.id, body)} />
           </div>
         )
       )}

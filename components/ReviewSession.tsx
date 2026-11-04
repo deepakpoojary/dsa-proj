@@ -4,6 +4,7 @@ import { useContext, useEffect, useState } from 'react';
 import type { CatalogItem } from '@/lib/item-catalog';
 import { formatInterval, previewIntervals, Grade, ReviewState } from '@/lib/spaced-repetition';
 import { NotesCtx } from '@/components/Notes';
+import AnnotatedText from '@/components/AnnotatedText';
 
 const KIND_ICON: Record<string, string> = { reading: '📄', quiz: '❓', video: '🎬', test: '🧪' };
 
@@ -29,7 +30,7 @@ export default function ReviewSession({
   onClose: () => void;
   noteOpen: boolean;
 }) {
-  const { notes, open } = useContext(NotesCtx);
+  const { notes, open, setNote } = useContext(NotesCtx);
   const [queue, setQueue] = useState<CatalogItem[]>(initial);
   const [revealed, setRevealed] = useState(false);
   const [reviewed, setReviewed] = useState(0);
@@ -147,7 +148,7 @@ export default function ReviewSession({
                       maxHeight: '45vh', overflowY: 'auto',
                     }}
                   >
-                    {note!.body}
+                    <AnnotatedText body={note!.body} onChange={(body) => setNote(item.id, body)} />
                   </div>
                 ) : (
                   <button

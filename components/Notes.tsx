@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotes, Note, NoteStatus } from '@/lib/use-notes';
+import AnnotatedText, { CommentPopover } from '@/components/AnnotatedText';
+import { annotate, flatten, overlapsAnnotation } from '@/lib/annotations';
 
 export interface NoteTarget {
   id: string;
@@ -49,6 +51,7 @@ export function useNoteHost(signedIn: boolean) {
       title={target.title}
       context={target.context}
       note={notes[target.id]}
+      onChange={(body) => setNote(target.id, body)}
       onEdit={() => setTarget({ ...target, mode: 'edit' })}
       onClose={close}
     />
@@ -90,7 +93,7 @@ export function NoteButton({
         e.stopPropagation();
         onClick();
       }}
-      title={has ? note!.body.split('\n')[0].slice(0, 120) : label ?? 'Add a note'}
+      title={has ? flatten(note!.body).split('\n')[0].slice(0, 120) : label ?? 'Add a note'}
       aria-label={has ? 'View note' : label ?? 'Add note'}
       style={{
         flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -133,6 +136,15 @@ export function NoteModal({
   // never yank the cursor while typing.
   const [text, setText] = useState(note?.body ?? '');
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
+  const [commenting, setCommenting] = useState<{ start: number; end: number; pos: { left: number; top: number; bottom: number } } | null>(null);
+
+  const trackSelection = () => {
+    const el = ref.current;
+    if (!el) return;
+    const { selectionStart: start, selectionEnd: end } = el;
+    setSel(start !== end && el.value.slice(start, end).trim() && !overlapsAnnotation(el.value, start, end) ? { start, end } : null);
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -191,6 +203,7 @@ export function NoteModal({
             setText(e.target.value);
             onChange(e.target.value);
           }}
+          onSelect={trackSelection}
           placeholder="Key idea, pattern, edge cases, complexity, mistakes you made…"
           style={{
             margin: '0 1.1rem', minHeight: '220px', maxHeight: '60vh', resize: 'vertical',
@@ -200,9 +213,45 @@ export function NoteModal({
         />
         <div style={{ padding: '0.6rem 1.1rem 0.9rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6e7681' }}>
           <span>{status ? STATUS_LABEL[status] : updated ? `Last edited ${updated.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Saves automatically'}</span>
-          <span>Esc to close</span>
+          <span style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              disabled={!sel}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const r = ref.current?.getBoundingClientRect();
+                if (sel && r) setCommenting({ ...sel, pos: { left: r.left + 12, top: r.top, bottom: r.top + 40 } });
+              }}
+              title={sel ? 'Add a comment to the selected words' : 'Select some words first'}
+              style={{
+                background: 'none', border: `1px solid ${sel ? 'rgba(210,153,34,0.5)' : '#30363d'}`, borderRadius: '999px',
+                color: sel ? '#d29922' : '#6e7681', fontSize: '0.7rem', padding: '2px 9px', cursor: sel ? 'pointer' : 'default',
+              }}
+            >
+              💬 Comment on selection
+            </button>
+            Esc to close
+          </span>
+        </div>
+        <div style={{ padding: '0 1.1rem 0.8rem', fontSize: '0.68rem', color: '#6e7681' }}>
+          Commented words show as [[words::comment]] while editing.
         </div>
       </div>
+      {commenting && (
+        <CommentPopover
+          pos={commenting.pos}
+          initial=""
+          editing={false}
+          onClose={() => setCommenting(null)}
+          onSave={(c) => {
+            const next = annotate(text, commenting.start, commenting.end, c);
+            setText(next);
+            onChange(next);
+            setCommenting(null);
+            setSel(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -212,17 +261,20 @@ export function NoteViewer({
   title,
   context,
   note,
+  onChange,
   onEdit,
   onClose,
 }: {
   title: string;
   context?: string;
   note: Note;
+  onChange: (body: string) => void;
   onEdit: () => void;
   onClose: () => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
       if (e.key === 'Escape') onClose();
       else if (e.key === 'e' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
@@ -280,18 +332,18 @@ export function NoteViewer({
             ×
           </button>
         </div>
-        <div
+        <AnnotatedText
+          body={note.body}
+          onChange={onChange}
           style={{
             margin: '0 1.1rem', maxHeight: '60vh', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             padding: '0.75rem', borderRadius: '8px', border: '1px solid #30363d', background: '#0d1117',
             color: '#e6edf3', fontSize: '0.88rem', lineHeight: 1.55,
           }}
-        >
-          {note.body}
-        </div>
+        />
         <div style={{ padding: '0.6rem 1.1rem 0.9rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6e7681' }}>
           <span>Last edited {updated.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
-          <span>E to edit · Esc to close</span>
+          <span>Select words to comment · E to edit · Esc to close</span>
         </div>
       </div>
     </div>
