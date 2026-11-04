@@ -13,6 +13,8 @@ import { TodoAdder, TodoRow, useToday } from '@/components/JournalView';
 import { useDocs } from '@/lib/use-docs';
 import { JournalEntry, CORE_PROMPTS, withDefaults, isEntryEmpty, journalStreak, reflectionDone } from '@/lib/journal';
 import { Goal, areaOf, daysLeft, goalProgress, sortGoals } from '@/lib/goals';
+import { DayLog, EMPTY_DAY, trackedMinutes, formatDuration } from '@/lib/time-tracking';
+import { Vehicle, VEHICLE_ICONS, computeSegments, summarize } from '@/lib/mileage';
 
 function formatInr(n: number) {
   const sign = n < 0 ? '-' : '';
@@ -111,6 +113,8 @@ export default function Dashboard({
   const { reviews } = useReviews(signedIn);
   const { docs: entries, setDoc: setEntry } = useDocs<JournalEntry>('journal', signedIn);
   const { docs: goals } = useDocs<Goal>('goal', signedIn);
+  const { docs: timeDays } = useDocs<DayLog>('time', signedIn);
+  const { docs: vehicles } = useDocs<Vehicle>('vehicle', signedIn);
   const today = useToday();
   const todayEntry = withDefaults(today ? entries[today] : undefined);
   const updateToday = (patch: Partial<JournalEntry>) => {
@@ -134,6 +138,12 @@ export default function Dashboard({
     if (span <= 0) return 1;
     return (netWorth - finance.startingBalance) / span;
   }, [finance, netWorth]);
+
+  const firstVehicle = Object.values(vehicles).sort((a, b) => a.createdAt - b.createdAt)[0];
+  const mileage = firstVehicle ? summarize(computeSegments(firstVehicle.fillups)) : null;
+  const vehicleCount = Object.keys(vehicles).length;
+
+  const trackedToday = trackedMinutes((today ? timeDays[today] : undefined)?.blocks ?? EMPTY_DAY.blocks);
 
   const noteCount = Object.values(notes).filter((n) => n.body.trim() !== '').length;
   const [now] = useState(() => Date.now());
@@ -288,6 +298,25 @@ export default function Dashboard({
             big={String(dueCount)}
             sub={dueCount === 1 ? 'review due now' : 'reviews due now'}
             footer={`${noteCount} ${noteCount === 1 ? 'note' : 'notes'} saved`}
+          />
+          <SectionCard
+            href="/time"
+            icon="⏱"
+            title="Time"
+            color="#39c5cf"
+            big={formatDuration(trackedToday)}
+            sub="tracked today"
+            progress={trackedToday / 1440}
+            footer={trackedToday < 1440 ? `${formatDuration(1440 - trackedToday)} untracked` : 'Fully tracked ✓'}
+          />
+          <SectionCard
+            href="/mileage"
+            icon="⛽"
+            title="Mileage"
+            color="#f0883e"
+            big={mileage ? mileage.average.toFixed(1) : '—'}
+            sub={firstVehicle ? `km/L avg · ${VEHICLE_ICONS[firstVehicle.type]} ${firstVehicle.name}` : 'no vehicles yet'}
+            footer={vehicleCount ? `${vehicleCount} ${vehicleCount === 1 ? 'vehicle' : 'vehicles'} tracked` : 'Track fuel efficiency per vehicle'}
           />
         </div>
 

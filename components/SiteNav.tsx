@@ -7,6 +7,8 @@ export const SECTIONS = [
   { href: '/dashboard', icon: '🏠', label: 'Dashboard' },
   { href: '/journal', icon: '📓', label: 'Journal' },
   { href: '/goals', icon: '🎯', label: 'Goals' },
+  { href: '/time', icon: '⏱', label: 'Time' },
+  { href: '/mileage', icon: '⛽', label: 'Mileage' },
   { href: '/', icon: '🧩', label: 'DSA Problems' },
   { href: '/theory', icon: '📖', label: 'Theory Q&A' },
   { href: '/roadmap', icon: '💸', label: 'Salary Roadmap' },

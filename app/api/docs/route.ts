@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth-helpers';
 import { supabase as adminSupabase } from '@/lib/supabase';
 
-const KINDS = new Set(['journal', 'goal', 'ink']);
+const KINDS = new Set(['journal', 'goal', 'ink', 'time', 'time-timer', 'time-category', 'vehicle']);
 const MAX_DOC_ID = 100;
 // Handwriting (kind 'ink') is vector strokes, so it gets far more room.
-const MAX_DATA: Record<string, number> = { journal: 50000, goal: 50000, ink: 1500000 };
+const MAX_DATA: Record<string, number> = { journal: 50000, goal: 50000, ink: 1500000, time: 50000, 'time-timer': 2000, 'time-category': 2000, vehicle: 200000 };
 
 // GET /api/docs?kind=journal
 export async function GET(req: NextRequest) {

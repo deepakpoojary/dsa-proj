@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type DocKind = 'journal' | 'goal' | 'ink';
+export type DocKind = 'journal' | 'goal' | 'ink' | 'time' | 'time-timer' | 'time-category' | 'vehicle';
 export type DocStatus = 'saving' | 'saved' | 'local';
 
 interface Stored<T> {
