@@ -1,12 +1,15 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { supabase as adminSupabase } from '@/lib/supabase';
 
-export async function getCurrentUser() {
+// getUser() is a network round-trip to Supabase Auth. Pages reach it through
+// several helpers (getIsPaidUser, the page itself), so memoise it per request.
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   return user;
-}
+});
 
 export async function getIsPaidUser(): Promise<boolean> {
   const user = await getCurrentUser();
