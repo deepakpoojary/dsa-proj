@@ -85,6 +85,79 @@ function DoneBox({
   );
 }
 
+// ── Short / Detailed ───────────────────────────────────────────────────────
+
+export type Depth = 'short' | 'detailed';
+const DEPTH_KEY = 'study:notes-depth';
+const depthListeners = new Set<(d: Depth) => void>();
+
+// Which version of the notes to show; remembered and shared by every popup.
+function useDepth(): [Depth, (d: Depth) => void] {
+  const [depth, setDepthState] = useState<Depth>('short');
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(DEPTH_KEY) === 'detailed') setDepthState('detailed');
+    } catch { /* storage blocked */ }
+    depthListeners.add(setDepthState);
+    return () => { depthListeners.delete(setDepthState); };
+  }, []);
+  const set = useCallback((d: Depth) => {
+    for (const l of depthListeners) l(d);
+    try { localStorage.setItem(DEPTH_KEY, d); } catch { /* ignore */ }
+  }, []);
+  return [depth, set];
+}
+
+interface Detail { notes: NoteLine[]; code: string | null }
+const detailCache = new Map<string, Promise<Detail | null>>();
+function fetchDetail(key: string): Promise<Detail | null> {
+  let p = detailCache.get(key);
+  if (!p) {
+    p = fetch(`/api/bank-detail?key=${encodeURIComponent(key)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Detail>) : null))
+      .catch(() => null);
+    p.then((d) => { if (!d) detailCache.delete(key); });
+    detailCache.set(key, p);
+  }
+  return p;
+}
+
+function useDetail(key: string | null): { detail: Detail | null; loading: boolean } {
+  const [state, setState] = useState<{ key: string | null; detail: Detail | null }>({ key: null, detail: null });
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    fetchDetail(key).then((d) => { if (live) setState({ key, detail: d }); });
+    return () => { live = false; };
+  }, [key]);
+  const ready = state.key === key;
+  return { detail: ready ? state.detail : null, loading: !!key && !ready };
+}
+
+function DepthToggle({ depth, onChange }: { depth: Depth; onChange: (d: Depth) => void }) {
+  const opt = (d: Depth, label: string, title: string) => (
+    <button key={d} type="button" title={title} onClick={() => onChange(d)}
+      style={{
+        border: 'none', borderRadius: '6px', padding: '2px 10px', fontSize: '0.72rem', cursor: 'pointer',
+        background: depth === d ? 'rgba(88,166,255,0.15)' : 'transparent', color: depth === d ? '#58a6ff' : '#8b949e',
+        fontWeight: depth === d ? 600 : 400,
+      }}>
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ display: 'inline-flex', gap: '2px', border: '1px solid #30363d', borderRadius: '8px', padding: '2px' }}>
+      {opt('short', '⚡ Short', 'Quick revision notes (T to switch)')}
+      {opt('detailed', '📖 Detailed', 'Explained from scratch: ELI5, how it works, walkthrough, mistakes, interview answer (T to switch)')}
+    </div>
+  );
+}
+
+function Loading() {
+  return <div style={{ fontSize: '0.82rem', color: '#8b949e', padding: '0.5rem 0' }}>Loading the detailed explanation…</div>;
+}
+
 // ── Popup ──────────────────────────────────────────────────────────────────
 
 function AnswerPopup({
@@ -102,26 +175,52 @@ function AnswerPopup({
 }) {
   const item = items[index];
   const editCtx = useNoteEdits();
+  const [depth, setDepth] = useDepth();
+  const showDetail = depth === 'detailed' && !!item.hasDetail;
+  const { detail, loading } = useDetail(showDetail ? item.key : null);
+  // Warm the next question so stepping through stays instant.
+  const nextKey = showDetail && items[index + 1]?.hasDetail ? items[index + 1].key : null;
+  useEffect(() => { if (nextKey) void fetchDetail(nextKey); }, [nextKey]);
+
+  // The version on screen. Short = the item (user edits already applied);
+  // detailed = fetched notes, with the user's own detailed rewrite on top.
+  const view = useMemo(() => {
+    if (!showDetail) {
+      return {
+        notes: item.notes, code: item.code, edited: !!item.edited, editKey: item.key,
+        original: item.edited ? item.original : { notes: item.notes, code: item.code },
+      };
+    }
+    const base = { notes: detail?.notes, code: detail?.code ?? undefined };
+    const editKey = `${item.key}#long`;
+    const e = editCtx?.edits[editKey];
+    return e
+      ? { notes: textToNotes(e.notes), code: e.code.trim() ? e.code : undefined, edited: true, editKey, original: base }
+      : { ...base, edited: false, editKey, original: base };
+  }, [showDetail, item, detail, editCtx?.edits]);
+
   const [editing, setEditing] = useState(startEditing && !!editCtx);
   const [draftNotes, setDraftNotes] = useState(() => (startEditing ? notesToText(item.notes) : ''));
   const [draftCode, setDraftCode] = useState(() => (startEditing ? item.code ?? '' : ''));
   const beginEdit = useCallback(() => {
-    setDraftNotes(notesToText(item.notes));
-    setDraftCode(item.code ?? '');
+    if (showDetail && loading) return;
+    setDraftNotes(notesToText(view.notes));
+    setDraftCode(view.code ?? '');
     setEditing(true);
-  }, [item]);
+  }, [view, showDetail, loading]);
   const saveEdit = () => {
     if (!editCtx) return;
-    const orig = item.edited ? item.original : { notes: item.notes, code: item.code };
+    const orig = view.original;
     const sameAsOriginal = draftNotes.trim() === notesToText(orig?.notes).trim() && draftCode.trim() === (orig?.code ?? '').trim();
-    editCtx.setEdit(item.key, sameAsOriginal ? null : { notes: draftNotes, code: draftCode });
+    editCtx.setEdit(view.editKey, sameAsOriginal ? null : { notes: draftNotes, code: draftCode });
     setEditing(false);
   };
   const resetEdit = () => {
-    editCtx?.setEdit(item.key, null);
+    editCtx?.setEdit(view.editKey, null);
     setEditing(false);
   };
   const go = (i: number) => { setEditing(false); onIndex(i); };
+  const switchDepth = useCallback((d: Depth) => { setEditing(false); setDepth(d); }, [setDepth]);
   const topic = topics[item.topic];
   const color = topic?.color ?? '#58a6ff';
   const done = isDone(item);
@@ -137,6 +236,7 @@ function AnswerPopup({
       else if (e.key === 'ArrowRight' && index < items.length - 1) onIndex(index + 1);
       else if (e.key === 'ArrowLeft' && index > 0) onIndex(index - 1);
       else if (e.key.toLowerCase() === 'e' && editCtx) { e.preventDefault(); beginEdit(); }
+      else if (e.key.toLowerCase() === 't' && item.hasDetail) switchDepth(depth === 'short' ? 'detailed' : 'short');
       else if (e.key.toLowerCase() === 'd' && (canTrack || item.progress.kind === 'checklist')) onToggle(item, !done);
     };
     window.addEventListener('keydown', onKey);
@@ -146,7 +246,7 @@ function AnswerPopup({
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [index, items.length, item, done, canTrack, onIndex, onClose, onToggle, editing, editCtx, beginEdit]);
+  }, [index, items.length, item, done, canTrack, onIndex, onClose, onToggle, editing, editCtx, beginEdit, switchDepth, depth]);
 
   const navBtn: React.CSSProperties = {
     background: '#21262d', border: '1px solid #30363d', color: '#c9d1d9', borderRadius: '6px',
@@ -177,9 +277,14 @@ function AnswerPopup({
               {item.group && <span>· {item.group}</span>}
               <Stars value={item.stars} />
               {item.difficulty && <span style={{ color: DIFF_COLOR[item.difficulty] }}>{item.difficulty}</span>}
-              {item.edited && <span style={{ color: '#d29922' }} title="You've edited these notes">✏️ edited</span>}
+              {view.edited && <span style={{ color: '#d29922' }} title="You've edited these notes">✏️ edited</span>}
             </div>
             <div style={{ fontSize: '1rem', fontWeight: 600, color: '#e6edf3', lineHeight: 1.45 }}>{item.title}</div>
+            {item.hasDetail && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <DepthToggle depth={depth} onChange={switchDepth} />
+              </div>
+            )}
           </div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>
             ×
@@ -228,8 +333,10 @@ function AnswerPopup({
                 <NotesBody notes={textToNotes(draftNotes)} code={draftCode.trim() ? draftCode : undefined} />
               </div>
             </div>
-          ) : item.notes?.length || item.code ? (
-            <NotesBody notes={item.notes} code={item.code} />
+          ) : showDetail && loading ? (
+            <Loading />
+          ) : view.notes?.length || view.code ? (
+            <NotesBody notes={view.notes} code={view.code} />
           ) : (
             <div style={{ fontSize: '0.84rem', color: '#8b949e' }}>
               No notes yet.{' '}
@@ -253,7 +360,7 @@ function AnswerPopup({
             <>
               <button type="button" onClick={saveEdit} style={{ ...navBtn, background: '#238636', borderColor: '#2ea043', color: '#fff' }}>Save notes</button>
               <button type="button" onClick={() => setEditing(false)} style={navBtn}>Cancel</button>
-              {item.edited && (
+              {view.edited && (
                 <button type="button" onClick={resetEdit} style={{ ...navBtn, color: '#f85149' }} title="Throw away your edits and show the original notes">
                   Reset to original
                 </button>
@@ -265,17 +372,45 @@ function AnswerPopup({
           <button type="button" style={{ ...navBtn, opacity: index > 0 ? 1 : 0.4 }} disabled={index === 0} onClick={() => go(index - 1)}>← Prev</button>
           <button type="button" style={{ ...navBtn, opacity: index < items.length - 1 ? 1 : 0.4 }} disabled={index >= items.length - 1} onClick={() => go(index + 1)}>Next →</button>
           <span style={{ fontSize: '0.72rem', color: '#6e7681' }}>{index + 1} / {items.length}</span>
-          {editCtx && <button type="button" onClick={beginEdit} style={navBtn} title="Rewrite these notes in your own words (E)">✏️ Edit notes</button>}
+          {editCtx && <button type="button" onClick={beginEdit} style={navBtn} title={`Rewrite the ${showDetail ? 'detailed' : 'short'} notes in your own words (E)`}>✏️ Edit {showDetail ? 'detailed' : 'notes'}</button>}
           <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: done ? '#3fb950' : '#c9d1d9', cursor: 'pointer' }}>
             <DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color="#3fb950" />
             {done ? 'Revised' : 'Mark revised'}
           </label>
-          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised{editCtx ? ' · E to edit' : ''} · Esc to close</span>
+          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised{editCtx ? ' · E to edit' : ''}{item.hasDetail ? ' · T short/detailed' : ''} · Esc to close</span>
           </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+// Q&A mode: short answers by default; each card can flip to the detailed one
+// (loaded on demand, so a page of 100 cards doesn't fetch 100 long answers).
+function InlineAnswer({ item }: { item: StudyItem }) {
+  const [open, setOpen] = useState(false);
+  const editCtx = useNoteEdits();
+  const showDetail = !!item.hasDetail && open;
+  const { detail, loading } = useDetail(showDetail ? item.key : null);
+  const own = editCtx?.edits[`${item.key}#long`];
+  return (
+    <>
+      {item.hasDetail && (
+        <div style={{ marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <DepthToggle depth={showDetail ? 'detailed' : 'short'} onChange={(d) => setOpen(d === 'detailed')} />
+        </div>
+      )}
+      {!showDetail ? (
+        <NotesBody notes={item.notes} code={item.code} />
+      ) : loading ? (
+        <Loading />
+      ) : own ? (
+        <NotesBody notes={textToNotes(own.notes)} code={own.code.trim() ? own.code : undefined} />
+      ) : (
+        <NotesBody notes={detail?.notes} code={detail?.code ?? undefined} />
+      )}
+    </>
   );
 }
 
@@ -436,7 +571,7 @@ export default function StudyList({
                   </div>
                 </div>
                 <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #21262d' }}>
-                  <NotesBody notes={item.notes} code={item.code} />
+                  <InlineAnswer item={item} />
                   {item.links && (
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
                       {item.links.map((l) => (

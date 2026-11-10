@@ -39,6 +39,8 @@ export interface StudyItem {
   theory?: TheoryQuestion;
   /** Set client-side when the user has rewritten this item's notes. */
   edited?: boolean;
+  /** A long, beginner-friendly version can be fetched from /api/bank-detail. */
+  hasDetail?: boolean;
   original?: { notes?: NoteLine[]; code?: string };
 }
 

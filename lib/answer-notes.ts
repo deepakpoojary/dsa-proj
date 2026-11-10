@@ -43,6 +43,12 @@ export function answerToNotes(answer: string): NoteLine[] {
   return out;
 }
 
+// Bank answers: "# Heading" starts a section, a leading two-space indent nests
+// a bullet under the previous one, anything else is a top-level bullet.
 export function bulletsToNotes(bullets: string[]): NoteLine[] {
-  return bullets.map((text) => ({ text, level: 0 }));
+  return bullets.map((raw) => {
+    const h = raw.match(/^#+\s+(.*)$/);
+    if (h) return { text: h[1], level: 0, heading: true };
+    return { text: raw.trim(), level: /^\s{2,}/.test(raw) ? 1 : 0 };
+  });
 }
