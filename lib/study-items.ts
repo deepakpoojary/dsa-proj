@@ -37,6 +37,9 @@ export interface StudyItem {
   noteId?: string;
   /** For DB theory questions — needed to keep admin editing working. */
   theory?: TheoryQuestion;
+  /** Set client-side when the user has rewritten this item's notes. */
+  edited?: boolean;
+  original?: { notes?: NoteLine[]; code?: string };
 }
 
 export interface StudyTopic {

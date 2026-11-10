@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useContext, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { StudyItem, StudyTopic } from '@/lib/study-items';
 import type { NoteLine } from '@/lib/answer-notes';
 import Stars from './Stars';
 import { NoteButton, NotesCtx } from './Notes';
+import { applyEdits, notesToText, textToNotes, useNoteEdits } from './NoteEdits';
 
 export type ListMode = 'notes' | 'inline';
 
@@ -87,7 +88,7 @@ function DoneBox({
 // ── Popup ──────────────────────────────────────────────────────────────────
 
 function AnswerPopup({
-  items, index, topics, isDone, canTrack, onToggle, onIndex, onClose,
+  items, index, topics, isDone, canTrack, onToggle, onIndex, onClose, startEditing = false,
 }: {
   items: StudyItem[];
   index: number;
@@ -97,18 +98,45 @@ function AnswerPopup({
   onToggle: (item: StudyItem, done: boolean) => void;
   onIndex: (i: number) => void;
   onClose: () => void;
+  startEditing?: boolean;
 }) {
   const item = items[index];
+  const editCtx = useNoteEdits();
+  const [editing, setEditing] = useState(startEditing && !!editCtx);
+  const [draftNotes, setDraftNotes] = useState(() => (startEditing ? notesToText(item.notes) : ''));
+  const [draftCode, setDraftCode] = useState(() => (startEditing ? item.code ?? '' : ''));
+  const beginEdit = useCallback(() => {
+    setDraftNotes(notesToText(item.notes));
+    setDraftCode(item.code ?? '');
+    setEditing(true);
+  }, [item]);
+  const saveEdit = () => {
+    if (!editCtx) return;
+    const orig = item.edited ? item.original : { notes: item.notes, code: item.code };
+    const sameAsOriginal = draftNotes.trim() === notesToText(orig?.notes).trim() && draftCode.trim() === (orig?.code ?? '').trim();
+    editCtx.setEdit(item.key, sameAsOriginal ? null : { notes: draftNotes, code: draftCode });
+    setEditing(false);
+  };
+  const resetEdit = () => {
+    editCtx?.setEdit(item.key, null);
+    setEditing(false);
+  };
+  const go = (i: number) => { setEditing(false); onIndex(i); };
   const topic = topics[item.topic];
   const color = topic?.color ?? '#58a6ff';
   const done = isDone(item);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (editing) {
+        if (e.key === 'Escape') setEditing(false);
+        return;
+      }
       if ((e.target as HTMLElement | null)?.closest?.('input[type=text], textarea')) return;
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowRight' && index < items.length - 1) onIndex(index + 1);
       else if (e.key === 'ArrowLeft' && index > 0) onIndex(index - 1);
+      else if (e.key.toLowerCase() === 'e' && editCtx) { e.preventDefault(); beginEdit(); }
       else if (e.key.toLowerCase() === 'd' && (canTrack || item.progress.kind === 'checklist')) onToggle(item, !done);
     };
     window.addEventListener('keydown', onKey);
@@ -118,7 +146,7 @@ function AnswerPopup({
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [index, items.length, item, done, canTrack, onIndex, onClose, onToggle]);
+  }, [index, items.length, item, done, canTrack, onIndex, onClose, onToggle, editing, editCtx, beginEdit]);
 
   const navBtn: React.CSSProperties = {
     background: '#21262d', border: '1px solid #30363d', color: '#c9d1d9', borderRadius: '6px',
@@ -149,6 +177,7 @@ function AnswerPopup({
               {item.group && <span>· {item.group}</span>}
               <Stars value={item.stars} />
               {item.difficulty && <span style={{ color: DIFF_COLOR[item.difficulty] }}>{item.difficulty}</span>}
+              {item.edited && <span style={{ color: '#d29922' }} title="You've edited these notes">✏️ edited</span>}
             </div>
             <div style={{ fontSize: '1rem', fontWeight: 600, color: '#e6edf3', lineHeight: 1.45 }}>{item.title}</div>
           </div>
@@ -158,8 +187,56 @@ function AnswerPopup({
         </div>
 
         <div style={{ padding: '0.9rem 1.1rem', overflowY: 'auto', flex: 1 }}>
-          <NotesBody notes={item.notes} code={item.code} />
-          {item.links && item.links.length > 0 && (
+          {editing ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontSize: '0.7rem', color: '#8b949e' }}>
+                One note per line · <code>- point</code> · indent <code>{'  - sub point'}</code> to nest · <code># Heading</code> · wrap <code>`code`</code> in backticks
+              </div>
+              <textarea
+                autoFocus
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(); return; }
+                  // Tab indents / outdents the current line instead of leaving the box.
+                  if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const el = e.currentTarget;
+                    const pos = el.selectionStart;
+                    const lineStart = draftNotes.lastIndexOf('\n', pos - 1) + 1;
+                    if (e.shiftKey) {
+                      if (draftNotes.startsWith('  ', lineStart)) {
+                        setDraftNotes(draftNotes.slice(0, lineStart) + draftNotes.slice(lineStart + 2));
+                        const p = Math.max(lineStart, pos - 2);
+                        requestAnimationFrame(() => el.setSelectionRange(p, p));
+                      }
+                    } else {
+                      setDraftNotes(draftNotes.slice(0, lineStart) + '  ' + draftNotes.slice(lineStart));
+                      requestAnimationFrame(() => el.setSelectionRange(pos + 2, pos + 2));
+                    }
+                  }
+                }}
+                rows={14}
+                style={editBox}
+              />
+              <div style={{ fontSize: '0.7rem', color: '#8b949e' }}>Code (optional)</div>
+              <textarea value={draftCode} onChange={(e) => setDraftCode(e.target.value)} rows={draftCode ? 8 : 3}
+                onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(); } }}
+                style={{ ...editBox, fontFamily: 'var(--font-geist-mono), monospace', fontSize: '0.78rem' }} />
+              <div style={{ fontSize: '0.7rem', color: '#8b949e' }}>Preview</div>
+              <div style={{ border: '1px dashed #30363d', borderRadius: '8px', padding: '0.6rem 0.8rem' }}>
+                <NotesBody notes={textToNotes(draftNotes)} code={draftCode.trim() ? draftCode : undefined} />
+              </div>
+            </div>
+          ) : item.notes?.length || item.code ? (
+            <NotesBody notes={item.notes} code={item.code} />
+          ) : (
+            <div style={{ fontSize: '0.84rem', color: '#8b949e' }}>
+              No notes yet.{' '}
+              {editCtx && <button type="button" onClick={beginEdit} style={{ background: 'none', border: 'none', color: '#58a6ff', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}>✏️ Add your notes</button>}
+            </div>
+          )}
+          {!editing && item.links && item.links.length > 0 && (
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.9rem' }}>
               {item.links.map((l) => (
                 <a key={l.href} href={l.href} target={l.href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
@@ -172,19 +249,40 @@ function AnswerPopup({
         </div>
 
         <div style={{ padding: '0.6rem 1.1rem 0.8rem', borderTop: '1px solid #21262d', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <button type="button" style={{ ...navBtn, opacity: index > 0 ? 1 : 0.4 }} disabled={index === 0} onClick={() => onIndex(index - 1)}>← Prev</button>
-          <button type="button" style={{ ...navBtn, opacity: index < items.length - 1 ? 1 : 0.4 }} disabled={index >= items.length - 1} onClick={() => onIndex(index + 1)}>Next →</button>
+          {editing ? (
+            <>
+              <button type="button" onClick={saveEdit} style={{ ...navBtn, background: '#238636', borderColor: '#2ea043', color: '#fff' }}>Save notes</button>
+              <button type="button" onClick={() => setEditing(false)} style={navBtn}>Cancel</button>
+              {item.edited && (
+                <button type="button" onClick={resetEdit} style={{ ...navBtn, color: '#f85149' }} title="Throw away your edits and show the original notes">
+                  Reset to original
+                </button>
+              )}
+              <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>Ctrl+Enter to save · Tab / Shift+Tab to indent · Esc to cancel</span>
+            </>
+          ) : (
+          <>
+          <button type="button" style={{ ...navBtn, opacity: index > 0 ? 1 : 0.4 }} disabled={index === 0} onClick={() => go(index - 1)}>← Prev</button>
+          <button type="button" style={{ ...navBtn, opacity: index < items.length - 1 ? 1 : 0.4 }} disabled={index >= items.length - 1} onClick={() => go(index + 1)}>Next →</button>
           <span style={{ fontSize: '0.72rem', color: '#6e7681' }}>{index + 1} / {items.length}</span>
+          {editCtx && <button type="button" onClick={beginEdit} style={navBtn} title="Rewrite these notes in your own words (E)">✏️ Edit notes</button>}
           <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: done ? '#3fb950' : '#c9d1d9', cursor: 'pointer' }}>
             <DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color="#3fb950" />
             {done ? 'Revised' : 'Mark revised'}
           </label>
-          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised · Esc to close</span>
+          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised{editCtx ? ' · E to edit' : ''} · Esc to close</span>
+          </>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+const editBox: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', background: '#0d1117', border: '1px solid #30363d', borderRadius: '8px',
+  color: '#e6edf3', padding: '0.55rem 0.7rem', fontSize: '0.84rem', lineHeight: 1.55, resize: 'vertical', fontFamily: 'inherit',
+};
 
 // ── Mode toggle ────────────────────────────────────────────────────────────
 
@@ -248,7 +346,7 @@ export function arrange(items: StudyItem[], minStars: number, sort: 'order' | 's
 // ── List ───────────────────────────────────────────────────────────────────
 
 export default function StudyList({
-  items, topics, mode, isDone, onToggle, canTrack, showGroups = true, showTopic = false, renderInline,
+  items: rawItems, topics, mode, isDone, onToggle, canTrack, showGroups = true, showTopic = false, renderInline,
 }: {
   items: StudyItem[];
   topics: Record<string, StudyTopic>;
@@ -262,13 +360,29 @@ export default function StudyList({
   renderInline?: (item: StudyItem) => React.ReactNode | null;
 }) {
   const notesCtx = useContext(NotesCtx);
+  const editCtx = useNoteEdits();
+  const edits = editCtx?.edits;
+  const personal = notesCtx.notes;
+  // One notes model everywhere: built-in answer → else an older personal note
+  // (the DSA "add note" ones) → and the user's own rewrite on top of either.
+  const items = useMemo(() => {
+    const seeded = rawItems.map((it) => {
+      const body = it.noteId ? personal[it.noteId]?.body : undefined;
+      if (it.notes?.length || it.code || !body?.trim()) return it;
+      return { ...it, notes: textToNotes(body) };
+    });
+    return applyEdits(seeded, edits);
+  }, [rawItems, edits, personal]);
   const [openIdx, setOpenIdx] = useState<number | null>(null);
-  // The popup steps only through items that have an answer.
-  const answerable = items.filter((it) => it.notes?.length || it.code);
+  const [startEditing, setStartEditing] = useState(false);
+  // With editing available every item opens the same popup (empty ones start
+  // in edit mode); otherwise the popup steps only through items with notes.
+  const answerable = editCtx ? items : items.filter((it) => it.notes?.length || it.code);
   const close = useCallback(() => setOpenIdx(null), []);
 
-  const openItem = (item: StudyItem) => {
+  const openItem = (item: StudyItem, edit = false) => {
     const i = answerable.indexOf(item);
+    setStartEditing(edit || (!!editCtx && !item.notes?.length && !item.code));
     if (i >= 0) setOpenIdx(i);
     else if (item.noteId) {
       const has = !!notesCtx.notes[item.noteId]?.body.trim();
@@ -311,7 +425,15 @@ export default function StudyList({
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '12px 14px 10px' }}>
                   <span style={{ paddingTop: '3px' }}><DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color={color} /></span>
                   <div style={{ flex: 1, color: '#e6edf3', fontSize: '0.92rem', fontWeight: 600, lineHeight: 1.5 }}>{item.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '3px' }}>{meta}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '3px' }}>
+                    {meta}
+                    {editCtx && (
+                      <button type="button" onClick={() => openItem(item, true)} title={item.edited ? 'Edited by you — edit again' : 'Edit these notes'}
+                        style={{ background: 'none', border: '1px solid #30363d', borderRadius: '6px', color: item.edited ? '#d29922' : '#8b949e', fontSize: '0.7rem', padding: '1px 7px', cursor: 'pointer' }}>
+                        ✏️{item.edited ? ' edited' : ''}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #21262d' }}>
                   <NotesBody notes={item.notes} code={item.code} />
@@ -349,9 +471,9 @@ export default function StudyList({
               {item.kind && <span style={{ fontSize: '0.72rem' }} title={item.kind}>{KIND_ICON[item.kind] ?? '•'}</span>}
               <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', color: done ? '#8b949e' : '#e6edf3', lineHeight: 1.45 }}>{item.title}</span>
               {meta}
-              {hasAnswer ? (
-                <span style={{ fontSize: '0.7rem', color: '#d29922', border: '1px solid rgba(210,153,34,0.45)', background: 'rgba(210,153,34,0.1)', borderRadius: '999px', padding: '1px 8px', whiteSpace: 'nowrap' }}>
-                  📝 Notes
+              {hasAnswer || editCtx ? (
+                <span style={{ fontSize: '0.7rem', color: '#d29922', border: '1px solid rgba(210,153,34,0.45)', background: 'rgba(210,153,34,0.1)', opacity: hasAnswer ? 1 : 0.6, borderRadius: '999px', padding: '1px 8px', whiteSpace: 'nowrap' }}>
+                  {hasAnswer ? `📝 Notes${item.edited ? ' ✏️' : ''}` : '＋ Add notes'}
                 </span>
               ) : item.noteId ? (
                 <NoteButton
@@ -373,6 +495,8 @@ export default function StudyList({
 
       {openIdx !== null && answerable[openIdx] && (
         <AnswerPopup
+          key={startEditing ? 'edit' : 'view'}
+          startEditing={startEditing}
           items={answerable}
           index={openIdx}
           topics={topics}

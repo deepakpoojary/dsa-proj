@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import SiteNav from './SiteNav';
 import StudyList, { arrange, ModeToggle, SortToggle, useListMode } from './StudyList';
+import { NoteEditsProvider } from './NoteEdits';
 import { StarFilter } from './Stars';
 import { NotesCtx, useNoteHost } from './Notes';
 import type { StudyItem, StudyTopic } from '@/lib/study-items';
@@ -59,7 +60,7 @@ export default function SearchView({
   const revised = items.filter(isDone).length;
 
   return (
-    <NotesCtx.Provider value={noteHost.value}>
+    <NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={signedIn}>
       <div style={{ minHeight: '100vh', background: '#0d1117', padding: '1.5rem 1rem 4rem' }}>
         <div style={{ maxWidth: '920px', margin: '0 auto' }}>
           <SiteNav />
@@ -150,6 +151,6 @@ export default function SearchView({
         </div>
       </div>
       {noteHost.modal}
-    </NotesCtx.Provider>
+    </NoteEditsProvider></NotesCtx.Provider>
   );
 }

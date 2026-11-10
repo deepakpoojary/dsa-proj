@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import TheoryCard from './TheoryCard'
 import SiteNav from './SiteNav'
 import StudyList, { arrange, ModeToggle, SortToggle, useListMode } from './StudyList'
+import { NoteEditsProvider } from './NoteEdits';
 import { StarFilter } from './Stars'
 import { NotesCtx, useNoteHost } from './Notes'
 import { theoryItems, StudyItem, StudyTopic } from '@/lib/study-items'
@@ -241,7 +242,7 @@ export default function TheoryView({
   const totalEnabled = enabledKeys.reduce((sum, k) => sum + (itemsByTopic[k]?.length ?? 0), 0)
 
   return (
-    <NotesCtx.Provider value={noteHost.value}>
+    <NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={!!email}>
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d1117' }}>
       {/* Sidebar */}
       <aside
@@ -559,6 +560,6 @@ export default function TheoryView({
       </main>
       {noteHost.modal}
     </div>
-    </NotesCtx.Provider>
+    </NoteEditsProvider></NotesCtx.Provider>
   )
 }

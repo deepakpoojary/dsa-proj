@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import SiteNav from './SiteNav';
 import StudyList, { arrange, SortToggle } from './StudyList';
+import { NoteEditsProvider } from './NoteEdits';
 import { StarFilter } from './Stars';
 import { NotesCtx, useNoteHost } from './Notes';
 import { DSA_TOPIC, SITE_DSA_COOKIE, StudyItem } from '@/lib/study-items';
@@ -66,7 +67,7 @@ export default function CourseDsaView({ items, email }: { items: StudyItem[]; em
   const topics = { [DSA_TOPIC.key]: DSA_TOPIC };
 
   return (
-    <NotesCtx.Provider value={noteHost.value}>
+    <NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={signedIn}>
       <div style={{ display: 'flex', minHeight: '100vh', background: '#0d1117' }}>
         <aside
           style={{
@@ -171,6 +172,6 @@ export default function CourseDsaView({ items, email }: { items: StudyItem[]; em
         </main>
       </div>
       {noteHost.modal}
-    </NotesCtx.Provider>
+    </NoteEditsProvider></NotesCtx.Provider>
   );
 }
