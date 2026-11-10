@@ -39,6 +39,7 @@ export interface EnrichedProblem extends Problem {
   solved: boolean;
   solvedToday: boolean;
   hasOverride: boolean;
+  stars?: number;
 }
 
 export const REWARD_TOP150 = 10;

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { EnrichedProblem, Example, rewardFor } from '@/types';
+import Stars from './Stars';
 
 const difficultyStyle: Record<string, string> = {
   Easy: 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/30',
@@ -149,6 +150,7 @@ export default function ProblemCard({
         <h3 className="text-base font-semibold text-[#e6edf3] flex items-center gap-2">
           <span className="text-[#8b949e] text-sm font-normal">#{index + 1}</span>
           {problem.title}
+          {problem.stars !== undefined && <Stars value={problem.stars} size="0.8rem" />}
         </h3>
         <div className="flex gap-2 flex-wrap items-center">
           {saving && <span className="text-[#8b949e] text-xs">saving…</span>}

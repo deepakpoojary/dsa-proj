@@ -1,11 +1,19 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { TheoryData, TheoryQuestion, rewardForTheory } from '@/types/theory'
 import { createClient } from '@/lib/supabase/client'
 import TheoryCard from './TheoryCard'
 import SiteNav from './SiteNav'
+import StudyList, { arrange, ModeToggle, SortToggle, useListMode } from './StudyList'
+import { StarFilter } from './Stars'
+import { NotesCtx, useNoteHost } from './Notes'
+import { theoryItems, StudyItem, StudyTopic } from '@/lib/study-items'
+import { useChecklist } from '@/lib/use-checklist'
+
+const BANK_OFF_KEY = 'theory:bank-topics-off'
+const PREFS_KEY = 'theory:prefs'
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -49,7 +57,11 @@ export default function TheoryView({
   startingBalance,
   otherDomainEarned,
   otherDomainEarnedToday,
+  bankTopics,
+  bankItems,
 }: {
+  bankTopics: StudyTopic[]
+  bankItems: StudyItem[]
   data: TheoryData
   email: string | null
   isAdmin: boolean
@@ -61,6 +73,33 @@ export default function TheoryView({
   const [data, setData] = useState<TheoryData>(initialData)
   const [editMode, setEditMode] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [mode, setMode] = useListMode()
+  const [minStars, setMinStars] = useState(0)
+  const [sort, setSort] = useState<'order' | 'stars'>('order')
+  const [bankOff, setBankOff] = useState<Set<string>>(new Set())
+  const { checked, setMany } = useChecklist(!!email)
+  const noteHost = useNoteHost(!!email)
+
+  useEffect(() => {
+    try {
+      const off = JSON.parse(localStorage.getItem(BANK_OFF_KEY) ?? '[]') as string[]
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBankOff(new Set(off))
+      const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as { minStars?: number; sort?: 'order' | 'stars' }
+      if (typeof prefs.minStars === 'number') setMinStars(prefs.minStars)
+      if (prefs.sort === 'stars' || prefs.sort === 'order') setSort(prefs.sort)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const savePrefs = (next: { minStars?: number; sort?: 'order' | 'stars' }) => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ minStars, sort, ...next }))
+    } catch {
+      // ignore
+    }
+  }
 
   const handleLogout = async () => {
     setSigningOut(true)
@@ -102,16 +141,53 @@ export default function TheoryView({
   const earnedToday = earnedTodayFromTheory + otherDomainEarnedToday
   const netWorth = startingBalance + totalEarned + otherDomainEarned
 
-  const topicEntries = Object.entries(data.topics)
+  // DB topics (OS, OOPs, CN, DBMS, SQL) + the static banks (JS, Node, TS, DevOps).
+  const allTopics = useMemo<Record<string, StudyTopic>>(() => {
+    const out: Record<string, StudyTopic> = {}
+    for (const [k, t] of Object.entries(data.topics)) out[k] = { key: k, label: t.label, color: t.color, source: 'db', enabled: t.enabled }
+    for (const t of bankTopics) out[t.key] = { ...t, enabled: !bankOff.has(t.key) }
+    return out
+  }, [data.topics, bankTopics, bankOff])
+
+  const topicEntries = Object.entries(allTopics)
   const enabledKeys = topicEntries.filter(([, t]) => t.enabled).map(([k]) => k)
 
-  const questionsByTopic = data.questions.reduce<Record<string, TheoryQuestion[]>>((acc, q) => {
-    if (!acc[q.topic]) acc[q.topic] = []
-    acc[q.topic].push(q)
-    return acc
-  }, {})
+  const itemsByTopic = useMemo(() => {
+    const all = [...theoryItems(data.questions), ...bankItems]
+    return all.reduce<Record<string, StudyItem[]>>((acc, it) => {
+      ;(acc[it.topic] ??= []).push(it)
+      return acc
+    }, {})
+  }, [data.questions, bankItems])
+
+  const isDone = useCallback(
+    (it: StudyItem) => (it.progress.kind === 'checklist' ? checked.has(it.progress.id) : !!it.theory?.solved),
+    [checked]
+  )
+
+  const onToggleItem = useCallback(
+    (it: StudyItem, done: boolean) => {
+      if (it.progress.kind === 'checklist') setMany([it.progress.id], done)
+      else if (it.progress.kind === 'theory') handleToggleSolved(it.progress.id, done)
+    },
+    [setMany, handleToggleSolved]
+  )
 
   const toggleTopic = async (key: string) => {
+    if (allTopics[key]?.source === 'bank') {
+      setBankOff((prev) => {
+        const next = new Set(prev)
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        try {
+          localStorage.setItem(BANK_OFF_KEY, JSON.stringify([...next]))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+      return
+    }
     const newEnabled = !data.topics[key].enabled
     setData((prev) => ({
       ...prev,
@@ -162,9 +238,10 @@ export default function TheoryView({
     await fetch(`/api/theory/${id}`, { method: 'DELETE' })
   }, [])
 
-  const totalEnabled = enabledKeys.reduce((sum, k) => sum + (questionsByTopic[k]?.length ?? 0), 0)
+  const totalEnabled = enabledKeys.reduce((sum, k) => sum + (itemsByTopic[k]?.length ?? 0), 0)
 
   return (
+    <NotesCtx.Provider value={noteHost.value}>
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d1117' }}>
       {/* Sidebar */}
       <aside
@@ -302,7 +379,7 @@ export default function TheoryView({
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {topicEntries.map(([key, topic]) => {
-              const count = questionsByTopic[key]?.length ?? 0
+              const count = itemsByTopic[key]?.length ?? 0
               return (
                 <div key={key}>
                   <div
@@ -342,7 +419,7 @@ export default function TheoryView({
                       </span>
                       <span style={{ fontSize: '0.68rem', color: '#8b949e', flexShrink: 0 }}>{count}</span>
                     </a>
-                    <Toggle checked={topic.enabled} onChange={() => toggleTopic(key)} />
+                    <Toggle checked={!!topic.enabled} onChange={() => toggleTopic(key)} />
                   </div>
                 </div>
               )
@@ -382,13 +459,24 @@ export default function TheoryView({
 
       {/* Main */}
       <main style={{ flex: 1, padding: '2rem 2.5rem 4rem', maxWidth: 'calc(100% - 220px)', overflowX: 'hidden' }}>
-        <div style={{ marginBottom: '2rem', paddingBottom: '1.25rem', borderBottom: '1px solid #21262d' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.25rem', borderBottom: '1px solid #21262d' }}>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#e6edf3', margin: 0 }}>
             Interview Theory Q&A
           </h1>
-          <p style={{ color: '#8b949e', fontSize: '0.85rem', marginTop: '4px', margin: '4px 0 0' }}>
-            OS · OOPs · Computer Networks · DBMS · SQL — in-depth answers
+          <p style={{ color: '#8b949e', fontSize: '0.85rem', margin: '4px 0 0' }}>
+            OS · OOPs · CN · DBMS · SQL · JavaScript · Node.js · TypeScript · DevOps — every question rated ★1–5 for interview importance
           </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', marginTop: '0.9rem' }}>
+            <ModeToggle mode={mode} onChange={setMode} />
+            <StarFilter value={minStars} onChange={(n) => { setMinStars(n); savePrefs({ minStars: n }) }} />
+            <SortToggle value={sort} onChange={(v) => { setSort(v); savePrefs({ sort: v }) }} />
+            <a href="/search" style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#58a6ff', textDecoration: 'none' }}>🔎 Search everything →</a>
+          </div>
+          {editMode && mode === 'notes' && (
+            <div style={{ fontSize: '0.72rem', color: '#d29922', marginTop: '0.5rem' }}>
+              Edit mode shows the editable Q&A cards for database questions.
+            </div>
+          )}
         </div>
 
         {enabledKeys.length === 0 && (
@@ -399,31 +487,29 @@ export default function TheoryView({
         )}
 
         {enabledKeys.map((key) => {
-          const topic = data.topics[key]
-          const qs = questionsByTopic[key] ?? []
+          const topic = allTopics[key]
+          const all = itemsByTopic[key] ?? []
+          const qs = arrange(all, minStars, sort)
+          const revised = all.filter(isDone).length
+          const isDb = topic.source === 'db'
 
           return (
             <section key={key} id={topicId(key)} style={{ marginBottom: '3rem' }}>
-              {/* Topic header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: topic.color, flexShrink: 0 }} />
                 <h2 style={{ fontSize: '0.82rem', fontWeight: 700, color: topic.color, textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
                   {topic.label}
                 </h2>
                 <div style={{ flex: 1, height: '1px', background: '#21262d' }} />
-                <span style={{ fontSize: '0.72rem', color: '#8b949e' }}>{qs.length}</span>
-                {editMode && (
+                <span style={{ fontSize: '0.72rem', color: '#8b949e' }}>
+                  {revised}/{all.length} revised{qs.length !== all.length ? ` · showing ${qs.length}` : ''}
+                </span>
+                {editMode && isDb && (
                   <button
                     onClick={() => addQuestion(key)}
                     style={{
-                      background: 'rgba(88,166,255,0.1)',
-                      border: '1px solid rgba(88,166,255,0.3)',
-                      borderRadius: '6px',
-                      color: '#58a6ff',
-                      fontSize: '0.72rem',
-                      padding: '2px 10px',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
+                      background: 'rgba(88,166,255,0.1)', border: '1px solid rgba(88,166,255,0.3)', borderRadius: '6px',
+                      color: '#58a6ff', fontSize: '0.72rem', padding: '2px 10px', cursor: 'pointer', fontFamily: 'inherit',
                     }}
                   >
                     + Add
@@ -431,41 +517,48 @@ export default function TheoryView({
                 )}
               </div>
 
-              {/* Questions */}
               {qs.length === 0 ? (
                 <div style={{ color: '#8b949e', fontSize: '0.82rem', padding: '1rem 0' }}>
-                  No questions yet.{' '}
-                  {editMode && (
-                    <span
-                      onClick={() => addQuestion(key)}
-                      style={{ color: '#58a6ff', cursor: 'pointer' }}
-                    >
-                      Add one →
-                    </span>
+                  {all.length === 0 ? 'No questions yet. ' : 'No questions at this importance level.'}
+                  {editMode && isDb && all.length === 0 && (
+                    <span onClick={() => addQuestion(key)} style={{ color: '#58a6ff', cursor: 'pointer' }}>Add one →</span>
                   )}
                 </div>
               ) : (
-                <div>
-                  {qs.map((q) => (
-                    <TheoryCard
-                      key={q.id}
-                      question={q}
-                      editMode={editMode && isAdmin}
-                      topicColor={topic.color}
-                      canTrackProgress={!!email}
-                      onUpdate={(updates) => updateQuestion(q.id, updates)}
-                      onDelete={() => deleteQuestion(q.id)}
-                      onAddAbove={() => addQuestion(key, q.id, true)}
-                      onAddBelow={() => addQuestion(key, q.id, false)}
-                      onToggleSolved={handleToggleSolved}
-                    />
-                  ))}
-                </div>
+                <StudyList
+                  items={qs}
+                  topics={allTopics}
+                  mode={editMode && isAdmin && isDb ? 'inline' : mode}
+                  isDone={isDone}
+                  onToggle={onToggleItem}
+                  canTrack={!!email}
+                  showGroups={sort === 'order'}
+                  renderInline={(it) => {
+                    const q = it.theory
+                    if (!q) return null
+                    return (
+                      <TheoryCard
+                        question={q}
+                        stars={it.stars}
+                        editMode={editMode && isAdmin}
+                        topicColor={topic.color}
+                        canTrackProgress={!!email}
+                        onUpdate={(updates) => updateQuestion(q.id, updates)}
+                        onDelete={() => deleteQuestion(q.id)}
+                        onAddAbove={() => addQuestion(key, q.id, true)}
+                        onAddBelow={() => addQuestion(key, q.id, false)}
+                        onToggleSolved={handleToggleSolved}
+                      />
+                    )
+                  }}
+                />
               )}
             </section>
           )
         })}
       </main>
+      {noteHost.modal}
     </div>
+    </NotesCtx.Provider>
   )
 }

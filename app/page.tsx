@@ -8,11 +8,24 @@ import {
   getSolvedTodayProblemIds,
 } from '@/lib/auth-helpers';
 import { getUserFinance, getTheoryEarned, startOfTodayIso } from '@/lib/finance';
+import { cookies } from 'next/headers';
 import ProblemsView from '@/components/ProblemsView';
+import CourseDsaView from '@/components/CourseDsaView';
+import { SITE_DSA_COOKIE } from '@/lib/study-items';
+import { courseDsaItems } from '@/lib/study-items.server';
+import { problemStars } from '@/lib/importance';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
+  // The course syllabus is the default DSA list; this site's own problems
+  // only load when switched back on (cookie set from either view).
+  const showSite = (await cookies()).get(SITE_DSA_COOKIE)?.value === '1';
+  if (!showSite) {
+    const user = await getCurrentUser();
+    return <CourseDsaView items={courseDsaItems()} email={user?.email ?? null} />;
+  }
+
   const [problems, topicOrder, user, hasPaid, isAdmin] = await Promise.all([
     getProblems(),
     getProblemTopics(),
@@ -53,6 +66,7 @@ export default async function Home() {
         solved: solvedIds.has(p.id),
         solvedToday: solvedTodayIds.has(p.id),
         hasOverride: !!override,
+        stars: problemStars(p),
       };
     })
   );

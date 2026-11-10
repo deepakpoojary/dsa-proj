@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { TheoryQuestion, rewardForTheory } from '@/types/theory'
+import Stars from './Stars'
 
 const difficultyColors: Record<string, { text: string; bg: string; border: string }> = {
   Easy: { text: '#3fb950', bg: 'rgba(63,185,80,0.1)', border: 'rgba(63,185,80,0.3)' },
@@ -49,6 +50,7 @@ function formatAnswer(text: string) {
 
 export default function TheoryCard({
   question,
+  stars,
   editMode,
   topicColor,
   canTrackProgress,
@@ -59,6 +61,7 @@ export default function TheoryCard({
   onToggleSolved,
 }: {
   question: TheoryQuestion
+  stars?: number
   editMode: boolean
   topicColor: string
   canTrackProgress: boolean
@@ -210,6 +213,7 @@ export default function TheoryCard({
                 +₹{rewardForTheory(question)}
               </a>
             )}
+            {stars !== undefined && <Stars value={stars} />}
             <span
               onClick={cycleDifficulty}
               style={{

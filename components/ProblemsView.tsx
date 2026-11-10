@@ -6,6 +6,9 @@ import { EnrichedProblem, rewardFor } from '@/types';
 import ProblemCard from './ProblemCard';
 import UserNav from './UserNav';
 import SiteNav from './SiteNav';
+import { StarFilter } from './Stars';
+import { useRouter } from 'next/navigation';
+import { setSiteDsa } from './CourseDsaView';
 
 function topicId(topic: string) {
   return `topic-${topic.toLowerCase().replace(/\s+/g, '-')}`;
@@ -55,6 +58,9 @@ export default function ProblemsView({
   const [editMode, setEditMode] = useState(true);
   const [topicFilter, setTopicFilter] = useState('all');
   const [top150Only, setTop150Only] = useState(true);
+  const [minStars, setMinStars] = useState(0);
+  const [switching, setSwitching] = useState(false);
+  const router = useRouter();
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Re-sync when the server re-renders this tree (e.g. router.refresh() after
@@ -118,9 +124,10 @@ export default function ProblemsView({
     return problems.filter(
       (p) =>
         (topicFilter === 'all' || p.topic === topicFilter) &&
-        (!top150Only || p.isTop150)
+        (!top150Only || p.isTop150) &&
+        (p.stars ?? 3) >= minStars
     );
-  }, [problems, topicFilter, top150Only]);
+  }, [problems, topicFilter, top150Only, minStars]);
 
   const fuse = useMemo(
     () => new Fuse(scoped, { keys: ['title', 'description', 'topic'], threshold: 0.35 }),
@@ -183,6 +190,34 @@ export default function ProblemsView({
         </div>
 
         <SiteNav variant="sidebar" />
+
+        <label
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '8px 10px',
+            borderRadius: '8px', border: '1px solid rgba(88,166,255,0.3)', background: 'rgba(88,166,255,0.08)',
+            fontSize: '0.75rem', color: '#58a6ff', cursor: 'pointer',
+          }}
+          title="Turn off to go back to just your course's DSA problems"
+        >
+          {switching ? 'Loading…' : "Showing this site's problems"}
+          <input
+            type="checkbox"
+            checked
+            disabled={switching}
+            onChange={() => {
+              setSwitching(true);
+              setSiteDsa(false);
+              router.refresh();
+            }}
+          />
+        </label>
+
+        <div>
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px' }}>
+            Importance
+          </div>
+          <StarFilter value={minStars} onChange={setMinStars} />
+        </div>
 
         {/* Earned today */}
         <div

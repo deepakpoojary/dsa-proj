@@ -136,3 +136,40 @@ body {
   border-radius: 10px;
   animation: route-pulse 1.2s ease-in-out infinite;
 }
+
+/* Notes-style question rows (components/StudyList.tsx) */
+.study-row:hover {
+  background: rgba(110, 118, 129, 0.1) !important;
+}
+
+/* Resume Builder (components/ResumeBuilder.tsx): print only the A4 sheet. */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .resume-no-print {
+    display: none !important;
+  }
+  .resume-app,
+  .resume-app > div,
+  .resume-app > div > div {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    background: #fff !important;
+    position: static !important;
+  }
+  .resume-sheet {
+    box-shadow: none !important;
+  }
+  .resume-print {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

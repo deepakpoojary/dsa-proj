@@ -2,6 +2,7 @@ import { getTheoryData } from '@/lib/theory'
 import { getCurrentUser, getSolvedTheoryIds, getSolvedTodayTheoryIds, isAdminSession } from '@/lib/auth-helpers'
 import { getUserFinance, getProblemsEarned, startOfTodayIso } from '@/lib/finance'
 import TheoryView from '@/components/TheoryView'
+import { bankItems, bankTopics } from '@/lib/study-items.server'
 
 export const metadata = { title: 'theory' };
 
@@ -39,6 +40,8 @@ export default async function TheoryPage() {
       startingBalance={finance.startingBalance}
       otherDomainEarned={otherDomainEarned}
       otherDomainEarnedToday={otherDomainEarnedToday}
+      bankTopics={bankTopics()}
+      bankItems={bankItems()}
     />
   )
 }
