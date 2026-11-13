@@ -41,6 +41,8 @@ export interface StudyItem {
   edited?: boolean;
   /** A long, beginner-friendly version can be fetched from /api/bank-detail. */
   hasDetail?: boolean;
+  /** An LLM-style (ChatGPT / Gemini) markdown answer can be fetched from /api/bank-gpt. */
+  hasGpt?: boolean;
   original?: { notes?: NoteLine[]; code?: string };
 }
 

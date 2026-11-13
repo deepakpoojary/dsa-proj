@@ -3,6 +3,7 @@ import type { Problem } from '@/types';
 import { answerToNotes, bulletsToNotes, NoteLine } from './answer-notes';
 import { BANK_TOPICS, bankItemId } from './interview-bank';
 import { bankDetail } from './interview-bank/detailed';
+import { gptAnswer } from './interview-bank/gpt';
 import { COURSE_DSA, COURSE_HLD, COURSE_LLD, CourseSection } from './course-syllabus';
 import { courseItemStars, designItemStars, problemStars } from './importance';
 import { DSA_TOPIC, HLD_TOPIC, LLD_TOPIC, SITE_DSA_TOPIC, type Progress, type StudyItem, type StudyTopic } from './study-items';
@@ -30,6 +31,7 @@ function buildBankItems(): StudyItem[] {
         notes: bulletsToNotes(q.a),
         code: q.code,
         hasDetail: !!bankDetail(id),
+        hasGpt: !!gptAnswer(id),
         progress: { kind: 'checklist', id } as Progress,
         done: false,
       };
