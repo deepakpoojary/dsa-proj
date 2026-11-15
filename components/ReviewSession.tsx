@@ -5,6 +5,40 @@ import type { CatalogItem } from '@/lib/item-catalog';
 import { formatInterval, previewIntervals, Grade, ReviewState } from '@/lib/spaced-repetition';
 import { NotesCtx } from '@/components/Notes';
 import AnnotatedText from '@/components/AnnotatedText';
+import { Inline, NotesBody } from '@/components/StudyList';
+import type { NoteLine } from '@/lib/answer-notes';
+
+interface Answer { notes: NoteLine[]; code: string | null }
+const answerCache = new Map<string, Promise<Answer | null>>();
+function fetchAnswer(id: string): Promise<Answer | null> {
+  let p = answerCache.get(id);
+  if (!p) {
+    p = fetch(`/api/bank-answer?key=${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Answer>) : null))
+      .catch(() => null);
+    p.then((a) => { if (!a) answerCache.delete(id); });
+    answerCache.set(id, p);
+  }
+  return p;
+}
+
+// The stored answer for interview-bank items (null while loading / none).
+function useAnswer(item: CatalogItem | undefined, next: CatalogItem | undefined): Answer | null | undefined {
+  const id = item?.hasAnswer && !item.answer ? item.id : null;
+  const [state, setState] = useState<{ id: string | null; answer: Answer | null }>({ id: null, answer: null });
+  useEffect(() => {
+    if (!id) return;
+    let live = true;
+    fetchAnswer(id).then((a) => { if (live) setState({ id, answer: a }); });
+    return () => { live = false; };
+  }, [id]);
+  // Warm the next card so revealing it is instant.
+  const nextId = next?.hasAnswer && !next.answer ? next.id : null;
+  useEffect(() => { if (nextId) void fetchAnswer(nextId); }, [nextId]);
+  if (item?.answer) return item.answer;
+  if (!id) return null;
+  return state.id === id ? state.answer : undefined;
+}
 
 const KIND_ICON: Record<string, string> = { reading: '📄', quiz: '❓', video: '🎬', test: '🧪' };
 
@@ -72,6 +106,7 @@ export default function ReviewSession({
     };
   }, []);
 
+  const answer = useAnswer(item, queue[1]);
   const note = item ? notes[item.id] : undefined;
   const hasNote = !!note && note.body.trim() !== '';
   const intervals = item ? previewIntervals(reviews[item.id]) : null;
@@ -119,25 +154,39 @@ export default function ReviewSession({
             <div style={{ fontSize: '0.72rem', color: '#8b949e', letterSpacing: '0.04em' }}>{context}</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#e6edf3', margin: '0.4rem 0 0.2rem', lineHeight: 1.3 }}>
               {item.kind && <span style={{ fontSize: '1rem', marginRight: '8px' }}>{KIND_ICON[item.kind]}</span>}
-              {item.title}
+              <Inline text={item.title} />
             </div>
             {!reviews[item.id] && <span style={{ fontSize: '0.68rem', color: '#58a6ff' }}>NEW</span>}
 
             {!revealed ? (
               <div style={{ marginTop: '1.5rem' }}>
                 <p style={{ color: '#8b949e', fontSize: '0.85rem', margin: '0 0 1rem' }}>
-                  Recall the approach, key idea and edge cases. Then check.
+                  {item.hasAnswer ? 'Say the answer out loud, then check.' : 'Recall the approach, key idea and edge cases. Then check.'}
                 </p>
                 <button
                   type="button"
                   onClick={() => setRevealed(true)}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', border: '1px solid #30363d', background: '#21262d', color: '#e6edf3', fontSize: '0.9rem', cursor: 'pointer' }}
                 >
-                  {hasNote ? 'Show my note' : 'Done recalling'} <span style={{ color: '#6e7681', fontSize: '0.75rem' }}>· Space</span>
+                  {item.hasAnswer ? 'Show answer' : hasNote ? 'Show my note' : 'Done recalling'} <span style={{ color: '#6e7681', fontSize: '0.75rem' }}>· Space</span>
                 </button>
               </div>
             ) : (
               <div style={{ marginTop: '1.25rem' }}>
+                {item.hasAnswer && (
+                  <div style={{
+                    padding: '0.85rem 1rem', borderRadius: '10px', background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.3)',
+                    maxHeight: '45vh', overflowY: 'auto', marginBottom: '0.75rem',
+                  }}>
+                    {answer === undefined ? (
+                      <span style={{ color: '#8b949e', fontSize: '0.82rem' }}>Loading the answer…</span>
+                    ) : answer && (answer.notes.length || answer.code) ? (
+                      <NotesBody notes={answer.notes} code={answer.code ?? undefined} />
+                    ) : (
+                      <span style={{ color: '#8b949e', fontSize: '0.82rem' }}>Couldn&apos;t load the answer.</span>
+                    )}
+                  </div>
+                )}
                 {hasNote ? (
                   <div
                     onClick={() => open({ id: item.id, title: item.title, context })}
@@ -156,7 +205,7 @@ export default function ReviewSession({
                     onClick={() => open({ id: item.id, title: item.title, context })}
                     style={{ width: '100%', padding: '0.7rem', borderRadius: '10px', border: '1px dashed #30363d', background: 'transparent', color: '#8b949e', fontSize: '0.82rem', cursor: 'pointer' }}
                   >
-                    ✎ No note yet. Write what you recalled so next time is easier.
+                    {item.hasAnswer ? '✎ Add your own note' : '✎ No note yet. Write what you recalled so next time is easier.'}
                   </button>
                 )}
 

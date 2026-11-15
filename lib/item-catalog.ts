@@ -4,6 +4,7 @@
 import { COURSE, CourseItemKind } from './course-syllabus';
 import { getGuide } from './study-guides';
 import type { Roadmap, Track } from './salary-roadmap';
+import type { NoteLine } from './answer-notes';
 
 export interface CatalogItem {
   id: string;
@@ -11,6 +12,10 @@ export interface CatalogItem {
   area: string;
   section: string;
   kind?: CourseItemKind;
+  /** Has a stored answer (interview-bank question) shown when a review card is revealed. */
+  hasAnswer?: boolean;
+  /** The answer itself, when the caller already has it (else fetched by id). */
+  answer?: { notes: NoteLine[]; code: string | null };
 }
 
 const TRACKS: Track[] = ['backend', 'frontend', 'fullstack', 'mobile', 'data', 'devops', 'qa', 'general'];
@@ -18,11 +23,14 @@ const LANGS: (string | null)[] = [null, 'java', 'node', 'python', 'go', 'dotnet'
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-export function buildCatalog(roadmap: Roadmap | null): Map<string, CatalogItem> {
+export function buildCatalog(roadmap: Roadmap | null, extra: CatalogItem[] = []): Map<string, CatalogItem> {
   const m = new Map<string, CatalogItem>();
   const add = (item: CatalogItem) => {
     if (!m.has(item.id)) m.set(item.id, item);
   };
+
+  // Interview banks (JavaScript, Node.js, Indian States…), passed in by the server.
+  for (const it of extra) add(it);
 
   const courseAreas: [keyof typeof COURSE, string][] = [['dsa', 'DSA'], ['lld', 'LLD'], ['hld', 'System Design']];
   for (const [track, area] of courseAreas) {

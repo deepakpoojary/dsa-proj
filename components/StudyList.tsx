@@ -14,7 +14,7 @@ const DIFF_COLOR: Record<string, string> = { Easy: '#3fb950', Medium: '#d29922',
 const KIND_ICON: Record<string, string> = { reading: '🧩', quiz: '❓', video: '🎬', test: '🧪' };
 
 // `code` spans inside note text.
-function Inline({ text }: { text: string }) {
+export function Inline({ text }: { text: string }) {
   const parts = text.split(/(`[^`]+`)/g);
   return (
     <>
@@ -233,6 +233,34 @@ function Loading({ what = 'the detailed explanation' }: { what?: string }) {
 
 // ── Popup ──────────────────────────────────────────────────────────────────
 
+// Runs from the moment the popup opens; it lives inside the popup, so closing
+// the popup resets it. Hidden by default (just ⏱); click to show / hide the time.
+function Stopwatch() {
+  const [startedAt] = useState(() => Date.now());
+  const [shown, setShown] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!shown) return; // keeps counting from startedAt; only re-render while visible
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [shown]);
+  const secs = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const mm = Math.floor(secs / 60);
+  const label = `${mm >= 60 ? `${Math.floor(mm / 60)}:${String(mm % 60).padStart(2, '0')}` : mm}:${String(secs % 60).padStart(2, '0')}`;
+  return (
+    <button type="button" onClick={() => { setNow(Date.now()); setShown((s) => !s); }}
+      title={shown ? 'Time since you opened this popup · click to hide' : 'Show how long this popup has been open'}
+      aria-label={shown ? `Open for ${label}, hide timer` : 'Show timer'}
+      style={{
+        background: 'none', border: `1px solid ${shown ? '#30363d' : 'transparent'}`, borderRadius: '6px', padding: '1px 8px', cursor: 'pointer',
+        fontSize: '0.75rem', fontFamily: 'var(--font-geist-mono), monospace', fontVariantNumeric: 'tabular-nums',
+        color: shown ? '#c9d1d9' : '#6e7681', whiteSpace: 'nowrap', lineHeight: 1.6,
+      }}>
+      ⏱{shown && ` ${label}`}
+    </button>
+  );
+}
+
 /** What the popup shows: notes (+code) for short/detailed, markdown for GPT. */
 interface View {
   notes?: NoteLine[];
@@ -393,6 +421,7 @@ function AnswerPopup({
               <CopyQuestion text={item.title} />
             </div>
           </div>
+          <Stopwatch />
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>
             ×
           </button>

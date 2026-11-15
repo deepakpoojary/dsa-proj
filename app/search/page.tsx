@@ -8,12 +8,22 @@ import { CATEGORIES, searchItems } from '@/lib/search';
 import SearchView from '@/components/SearchView';
 
 export const metadata = { title: 'search' };
+
+function safeDecode(v: string): string {
+  try { return decodeURIComponent(v); } catch { return ''; }
+}
 export const dynamic = 'force-dynamic';
+
+/** Last search, so /search reopens the topic you were on. Set by SearchView. */
+const LAST_SEARCH_COOKIE = 'search-last';
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const raw = (await searchParams).q;
-  const q = (Array.isArray(raw) ? raw[0] : raw ?? '').slice(0, 200);
-  const showSite = (await cookies()).get(SITE_DSA_COOKIE)?.value === '1';
+  const jar = await cookies();
+  // No ?q at all → reopen the last search; an explicit empty ?q= means "cleared".
+  const fromCookie = raw === undefined ? safeDecode(jar.get(LAST_SEARCH_COOKIE)?.value ?? '') : '';
+  const q = (Array.isArray(raw) ? raw[0] : raw ?? fromCookie).slice(0, 200);
+  const showSite = jar.get(SITE_DSA_COOKIE)?.value === '1';
 
   const [theory, user] = await Promise.all([getTheoryData(), getCurrentUser()]);
   const [solvedTheory, solvedProblems, problems] = await Promise.all([

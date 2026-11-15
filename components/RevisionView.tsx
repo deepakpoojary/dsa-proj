@@ -16,6 +16,7 @@ import { useChecklist } from '@/lib/use-checklist';
 import { NoteButton, NotesCtx, useNoteHost } from '@/components/Notes';
 import type { NoteStatus } from '@/lib/use-notes';
 import ReviewSession from '@/components/ReviewSession';
+import { Inline } from '@/components/StudyList';
 import { useReviews } from '@/lib/use-reviews';
 import { buildQueue, dueLabel, startOfToday, NEW_PER_DAY, ReviewState } from '@/lib/spaced-repetition';
 
@@ -50,7 +51,18 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-export default function RevisionView({ signedIn, stats }: { signedIn: boolean; stats: StudyStats }) {
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export default function RevisionView({
+  signedIn, stats, bankCatalog = [],
+}: { signedIn: boolean; stats: StudyStats; bankCatalog?: CatalogItem[] }) {
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -115,7 +127,7 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
     }
   }, []);
 
-  const catalog = useMemo(() => buildCatalog(roadmap), [roadmap]);
+  const catalog = useMemo(() => buildCatalog(roadmap, bankCatalog), [roadmap, bankCatalog]);
   const order = useMemo(() => new Map([...catalog.keys()].map((id, i) => [id, i])), [catalog]);
 
   // A note's sort time is pinned when it's first seen, so editing a note
@@ -135,20 +147,39 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
     return m;
   }, [rawEvents]);
 
-  // Everything the user has touched: ticked, or written a note on — newest
-  // first (latest of tick time / note time), falling back to reverse course order.
+  // Everything the user has touched: ticked, written a note on, or reviewed —
+  // newest first (latest of tick time / note time), falling back to reverse course order.
   const touched = useMemo(() => {
-    const ids = new Set<string>([...checked, ...Object.keys(notes).filter((id) => notes[id].body.trim() !== '')]);
+    const ids = new Set<string>([
+      ...checked,
+      ...Object.keys(notes).filter((id) => notes[id].body.trim() !== ''),
+      ...Object.keys(reviews),
+    ]);
     const recency = (id: string) => Math.max(checked.has(id) ? checkedAt.get(id) ?? 0 : 0, noteSeenAt[id] ?? 0);
     return [...ids]
-      .filter((id) => !id.startsWith('site:') && !id.startsWith('theory:'))
+      .filter((id) => !id.startsWith('site:') && !id.startsWith('theory:') && !id.startsWith('problem:'))
       .map((id) => catalog.get(id) ?? describeUnknown(id))
       .sort((a, b) => recency(b.id) - recency(a.id) || (order.get(b.id) ?? -1) - (order.get(a.id) ?? -1));
-  }, [checked, notes, catalog, order, checkedAt, noteSeenAt]);
+  }, [checked, notes, reviews, catalog, order, checkedAt, noteSeenAt]);
 
   const doneCount = touched.filter((i) => checked.has(i.id)).length;
   const notedCount = touched.filter((i) => notes[i.id]?.body.trim()).length;
-  const areas = useMemo(() => ['All', ...Array.from(new Set(touched.map((i) => i.area)))], [touched]);
+  // Every topic gets a chip, whether or not anything in it is touched yet, so
+  // a newly added topic can be revised on its own straight away.
+  const areaTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of catalog.values()) m.set(i.area, (m.get(i.area) ?? 0) + 1);
+    return m;
+  }, [catalog]);
+  const touchedPerArea = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of touched) m.set(i.area, (m.get(i.area) ?? 0) + 1);
+    return m;
+  }, [touched]);
+  const areas = useMemo(
+    () => ['All', ...Array.from(new Set([...areaTotals.keys(), ...touched.map((i) => i.area)]))],
+    [areaTotals, touched]
+  );
 
   const q = query.trim().toLowerCase();
   const visible = touched.filter((i) => {
@@ -176,8 +207,9 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
     return g;
   }, [visible]);
 
-  // Spaced repetition runs over completed items only.
-  const doneItems = touched.filter((i) => checked.has(i.id));
+  // Spaced repetition runs over completed items (and anything already
+  // reviewed, e.g. from a topic practice) — limited to the chosen topic.
+  const doneItems = touched.filter((i) => (checked.has(i.id) || !!reviews[i.id]) && (area === 'All' || i.area === area));
   const byId = new Map(doneItems.map((i) => [i.id, i]));
   const { due, fresh } = buildQueue(doneItems.map((i) => i.id), reviews, now);
   const reviewedToday = Object.values(reviews).filter((r) => r.lastReviewedAt >= startOfToday(now)).length;
@@ -191,6 +223,12 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
   function startSession() {
     const items = [...due, ...fresh].map((id) => byId.get(id)!).filter(Boolean);
     if (items.length) setSession(items);
+  }
+
+  // Active recall over a whole topic (ticked or not), in random order.
+  const practicePool = area === 'All' ? [] : [...catalog.values()].filter((i) => i.area === area);
+  function startPractice() {
+    if (practicePool.length) setSession(shuffle(practicePool));
   }
 
   // ₹/yr of salary value per checkbox / site topic, from the saved roadmap —
@@ -344,14 +382,6 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
                 <a href="/login" style={{ color: '#58a6ff' }}>Log in</a> to see your activity calendar.
               </p>
             )
-          ) : touched.length === 0 ? (
-            <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '12px', padding: '2.5rem 1.5rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.6rem' }}>📝</div>
-              <p style={{ color: '#e6edf3', fontSize: '0.9rem', margin: '0.5rem 0 0.25rem' }}>Nothing to revise yet</p>
-              <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: 0 }}>
-                Tick lessons or add notes on the <Link href="/roadmap" style={{ color: '#58a6ff' }}>Salary Roadmap</Link>. They show up here.
-              </p>
-            </div>
           ) : (
             <>
               <TodayCard
@@ -362,6 +392,9 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
                 nextDue={nextDue}
                 hasDone={doneItems.length > 0}
                 onStart={startSession}
+                topic={area === 'All' ? null : area}
+                practiceCount={practicePool.length}
+                onPractice={startPractice}
               />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -379,14 +412,31 @@ export default function RevisionView({ signedIn, stats }: { signedIn: boolean; s
                     <Chip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</Chip>
                   ))}
                   <span style={{ width: '1px', background: '#30363d', margin: '0 0.2rem' }} />
-                  {areas.map((a) => (
-                    <Chip key={a} active={area === a} onClick={() => setArea(a)}>{a}</Chip>
-                  ))}
+                  {areas.map((a) => {
+                    const n = a === 'All' ? 0 : touchedPerArea.get(a) ?? 0;
+                    return (
+                      <Chip key={a} active={area === a} onClick={() => setArea(a)}>
+                        {a}{n > 0 && <span style={{ color: '#6e7681', marginLeft: '5px' }}>{n}</span>}
+                      </Chip>
+                    );
+                  })}
                 </div>
               </div>
 
-              {visible.length === 0 && (
-                <p style={{ color: '#8b949e', fontSize: '0.85rem', textAlign: 'center', margin: '1.5rem 0' }}>No matches.</p>
+              {touched.length === 0 && area === 'All' ? (
+                <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '12px', padding: '2.5rem 1.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.6rem' }}>📝</div>
+                  <p style={{ color: '#e6edf3', fontSize: '0.9rem', margin: '0.5rem 0 0.25rem' }}>Nothing to revise yet</p>
+                  <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: 0 }}>
+                    Tick lessons or add notes on the <Link href="/roadmap" style={{ color: '#58a6ff' }}>Salary Roadmap</Link>, or pick a topic above and practise it.
+                  </p>
+                </div>
+              ) : visible.length === 0 && (
+                <p style={{ color: '#8b949e', fontSize: '0.85rem', textAlign: 'center', margin: '1.5rem 0' }}>
+                  {area !== 'All' && !q && filter === 'all'
+                    ? `Nothing from ${area} revised yet. Use Practice above to go through all ${practicePool.length}.`
+                    : 'No matches.'}
+                </p>
               )}
 
               {[...grouped].map(([areaName, sections]) => (
@@ -511,7 +561,7 @@ function PrintableRevision({
 }
 
 function TodayCard({
-  due, fresh, backlogNew, reviewedToday, nextDue, hasDone, onStart,
+  due, fresh, backlogNew, reviewedToday, nextDue, hasDone, onStart, topic, practiceCount, onPractice,
 }: {
   due: number;
   fresh: number;
@@ -520,9 +570,13 @@ function TodayCard({
   nextDue?: number;
   hasDone: boolean;
   onStart: () => void;
+  /** The topic chip that's selected (null = everything). */
+  topic: string | null;
+  practiceCount: number;
+  onPractice: () => void;
 }) {
   const total = due + fresh;
-  if (!hasDone) return null;
+  if (!hasDone && !topic) return null;
   const next = nextDue ? new Date(nextDue) : null;
   return (
     <div
@@ -532,8 +586,12 @@ function TodayCard({
       }}
     >
       <div style={{ flex: 1, minWidth: '200px' }}>
-        <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Today&apos;s review</div>
-        {total ? (
+        <div style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Today&apos;s review{topic && <span style={{ color: '#e6edf3' }}> · {topic}</span>}
+        </div>
+        {!hasDone ? (
+          <div style={{ fontSize: '1rem', color: '#e6edf3', fontWeight: 600, marginTop: '2px' }}>Nothing scheduled yet</div>
+        ) : total ? (
           <div style={{ fontSize: '1rem', color: '#e6edf3', fontWeight: 600, marginTop: '2px' }}>
             {due > 0 && <span>{due} due</span>}
             {due > 0 && fresh > 0 && <span style={{ color: '#6e7681' }}> · </span>}
@@ -543,20 +601,34 @@ function TodayCard({
           <div style={{ fontSize: '1rem', color: '#3fb950', fontWeight: 600, marginTop: '2px' }}>All caught up ✓</div>
         )}
         <div style={{ fontSize: '0.72rem', color: '#6e7681', marginTop: '3px' }}>
-          {reviewedToday > 0 ? `${reviewedToday} reviewed today` : `Up to ${NEW_PER_DAY} new items a day`}
-          {backlogNew > 0 && ` · ${backlogNew} more waiting`}
-          {!total && next && ` · next ${next.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}`}
+          {!hasDone
+            ? 'Practise the whole topic: cards you grade come back on schedule.'
+            : reviewedToday > 0 ? `${reviewedToday} reviewed today` : `Up to ${NEW_PER_DAY} new items a day`}
+          {hasDone && backlogNew > 0 && ` · ${backlogNew} more waiting`}
+          {hasDone && !total && next && ` · next ${next.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}`}
         </div>
       </div>
-      {total > 0 && (
-        <button
-          type="button"
-          onClick={onStart}
-          style={{ padding: '0.6rem 1.3rem', borderRadius: '8px', border: 'none', background: '#238636', color: '#fff', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
-        >
-          Start review ({total})
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {topic && practiceCount > 0 && (
+          <button
+            type="button"
+            onClick={onPractice}
+            title={`Every ${topic} card in random order, ticked or not`}
+            style={{ padding: '0.6rem 1.1rem', borderRadius: '8px', border: '1px solid #30363d', background: '#21262d', color: '#e6edf3', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
+          >
+            🧠 Practice all ({practiceCount})
+          </button>
+        )}
+        {total > 0 && (
+          <button
+            type="button"
+            onClick={onStart}
+            style={{ padding: '0.6rem 1.3rem', borderRadius: '8px', border: 'none', background: '#238636', color: '#fff', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}
+          >
+            Start review ({total})
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -592,7 +664,7 @@ function RevisionItem({
       <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
         <input type="checkbox" checked={checked} onChange={onToggle} style={{ accentColor: '#3fb950' }} />
         {item.kind && <span style={{ fontSize: '0.72rem' }}>{KIND_ICON[item.kind]}</span>}
-        <span style={{ flex: 1, fontSize: '0.85rem', color: '#e6edf3' }}>{item.title}</span>
+        <span style={{ flex: 1, fontSize: '0.85rem', color: '#e6edf3' }}><Inline text={item.title} /></span>
         {checked && (
           <span style={{ fontSize: '0.68rem', whiteSpace: 'nowrap', color: !review ? '#58a6ff' : review.dueAt <= now ? '#3fb950' : '#6e7681' }}>
             {dueLabel(review, now)}

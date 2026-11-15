@@ -22,6 +22,8 @@ export const CATEGORIES: Category[] = [
   { key: 'node', label: 'Node.js', topics: ['Node'], aliases: ['node', 'nodejs', 'node js', 'node.js', 'express', 'expressjs'] },
   { key: 'ts', label: 'TypeScript', topics: ['TS'], aliases: ['ts', 'typescript', 'type script'] },
   { key: 'devops', label: 'DevOps', topics: ['DevOps'], aliases: ['devops', 'dev ops', 'cloud', 'infra', 'infrastructure'] },
+  { key: 'ai', label: 'AI Engineer', topics: ['AI'], aliases: ['ai', 'ai engineer', 'ai engineering', 'llm', 'llms', 'genai', 'gen ai', 'generative ai', 'rag', 'agents', 'ml'] },
+  { key: 'states', label: 'Indian States', topics: ['States'], aliases: ['states', 'indian states', 'india states', 'capitals', 'state capitals'] },
   { key: 'os', label: 'Operating Systems', topics: ['OS'], aliases: ['os', 'operating system', 'operating systems'] },
   { key: 'oops', label: 'OOPs', topics: ['OOPs'], aliases: ['oop', 'oops', 'object oriented', 'object oriented programming', 'object-oriented programming'] },
   { key: 'cn', label: 'Computer Networks', topics: ['CN'], aliases: ['cn', 'networks', 'networking', 'computer networks', 'computer network'] },
