@@ -10,7 +10,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { loadDays, readSession as read, recordSession, studyByDay, writeSession as write, type Session } from '@/lib/study-session';
+import {
+  loadDays, readSession as read, recordSession, studyByDay, writeSession as write, type Session,
+  DAILY_GOAL_MIN, readCarry, readStopwatch, stopStretch, writeStopwatch, STOPWATCH_STORAGE_KEY,
+} from '@/lib/study-session';
 import { formatDuration } from '@/lib/time-tracking';
 import { parseDayKey } from '@/lib/journal';
 
@@ -176,7 +179,15 @@ export default function SessionGate() {
   }, [locked]);
 
   if (open || phase === 'checking') return null;
-  if (off) return <OffPill onTurnOn={turnOn} />;
+  if (off) {
+    return (
+      <div className="session-countdown" style={{ position: 'fixed', right: '14px', bottom: '14px', zIndex: 950, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <style>{'@media print { .session-countdown { display: none !important; } }'}</style>
+        <StudyStopwatch />
+        <OffPill onTurnOn={turnOn} />
+      </div>
+    );
+  }
   if (phase === 'running' && session) return <Countdown left={session.endsAt - now} total={session.endsAt - session.startedAt} onExtend={() => extend(5)} onEnd={end} onTurnOff={turnOff} />;
 
   return (
@@ -361,13 +372,97 @@ function StudyLog() {
 // Shown while the focus timer is switched off: one click turns it back on.
 function OffPill({ onTurnOn }: { onTurnOn: () => void }) {
   return (
-    <button type="button" onClick={onTurnOn} className="session-countdown" title="Focus timer is off · click to turn it on"
+    <button type="button" onClick={onTurnOn} title="Focus timer is off · click to turn it on"
       style={{
-        position: 'fixed', right: '14px', bottom: '14px', zIndex: 950, padding: '4px 11px', borderRadius: '999px',
-        border: '1px solid #30363d', background: '#161b22', color: '#6e7681', fontSize: '0.75rem', cursor: 'pointer', opacity: 0.7,
+        padding: '4px 11px', borderRadius: '999px', border: '1px solid #30363d', background: '#161b22',
+        color: '#6e7681', fontSize: '0.75rem', cursor: 'pointer', opacity: 0.7,
       }}>
-      <style>{'@media print { .session-countdown { display: none !important; } }'}</style>
       ⏳ Focus off
+    </button>
+  );
+}
+
+function fmtStudy(ms: number, withSecs: boolean): string {
+  const secs = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const sec = String(secs % 60).padStart(2, '0');
+  if (withSecs) return h ? `${h}h ${String(m).padStart(2, '0')}m ${sec}s` : `${m}m ${sec}s`;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+// Start / stop study stopwatch with today's total against the daily goal.
+// Stopping logs the stretch as Study time on /time (same as focus sessions),
+// so today's total = everything logged today + whatever is running now.
+function StudyStopwatch() {
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [loggedMin, setLoggedMin] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [carryMs, setCarryMs] = useState(0);
+
+  const refreshTotal = useCallback(() => {
+    loadDays().then(({ days }) => setLoggedMin(studyByDay(days, 1)[0].minutes));
+  }, []);
+
+  useEffect(() => {
+    const sync = () => { setStartedAt(readStopwatch()); setCarryMs(readCarry()); setNow(Date.now()); };
+    sync();
+    refreshTotal();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STOPWATCH_STORAGE_KEY) { sync(); refreshTotal(); }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [refreshTotal]);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [startedAt]);
+
+  async function toggle() {
+    if (busy) return;
+    const t = Date.now();
+    if (!startedAt) {
+      writeStopwatch(t);
+      setStartedAt(t);
+      setNow(t);
+      return;
+    }
+    setBusy(true);
+    const added = await stopStretch(startedAt, t);
+    setCarryMs(readCarry());
+    writeStopwatch(null);
+    setStartedAt(null);
+    setLoggedMin((m) => (m ?? 0) + added);
+    refreshTotal();
+    setBusy(false);
+  }
+
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const runningMs = startedAt ? Math.max(0, now - Math.max(startedAt, midnight.getTime())) : 0;
+  const todayMs = (loggedMin ?? 0) * 60_000 + carryMs + runningMs;
+  const goalMs = DAILY_GOAL_MIN * 60_000;
+  const pct = Math.min(100, (todayMs / goalMs) * 100);
+  const reached = todayMs >= goalMs;
+  const color = reached ? '#3fb950' : startedAt ? '#a371f7' : '#8b949e';
+
+  return (
+    <button type="button" onClick={toggle} disabled={busy || loggedMin === null}
+      title={`${startedAt ? 'Studying · click to stop and log it' : 'Click to start studying'} · ${fmtStudy(todayMs, false)} of ${DAILY_GOAL_MIN / 60}h today`}
+      style={{
+        position: 'relative', overflow: 'hidden', padding: '4px 12px', borderRadius: '999px', cursor: busy ? 'wait' : 'pointer',
+        border: `1px solid ${startedAt || reached ? `${color}88` : '#30363d'}`, background: '#161b22', color,
+        fontSize: '0.78rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        whiteSpace: 'nowrap',
+      }}>
+      <span style={{ position: 'absolute', left: 0, bottom: 0, height: '2px', width: `${pct}%`, background: color }} />
+      {startedAt ? '⏸' : '▶'} {loggedMin === null ? '…' : fmtStudy(todayMs, true)}
+      <span style={{ color: '#6e7681', fontWeight: 400 }}> / {DAILY_GOAL_MIN / 60}h</span>
+      {reached && ' 🎉'}
     </button>
   );
 }

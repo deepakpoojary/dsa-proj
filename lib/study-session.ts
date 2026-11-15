@@ -92,9 +92,13 @@ export async function recordSession(endedAt: number): Promise<number> {
   if (!s || s.recorded) return 0;
   writeSession({ ...s, recorded: true }); // claim it before any await
 
-  const end = Math.min(endedAt, s.endsAt);
-  if (end - s.startedAt < 60_000) return 0;
-  const parts = timerToBlocks(s.startedAt, end, STUDY_CATEGORY, NOTE);
+  return logStudy(s.startedAt, Math.min(endedAt, s.endsAt), NOTE);
+}
+
+/** Adds [start, end) as Study time to the day log(s), split at midnight. Returns minutes logged. */
+export async function logStudy(start: number, end: number, note: string): Promise<number> {
+  if (end - start < 60_000) return 0;
+  const parts = timerToBlocks(start, end, STUDY_CATEGORY, note);
 
   const { days, signedIn } = await loadDays();
   const local = readLocalDays();
@@ -114,5 +118,63 @@ export async function recordSession(endedAt: number): Promise<number> {
     }
   }
   try { localStorage.setItem(TIME_DOCS, JSON.stringify(local)); } catch { /* ignore */ }
-  return Math.round((end - s.startedAt) / 60_000);
+  return Math.round((end - start) / 60_000);
+}
+
+// ── Daily study stopwatch (start / stop, any number of times a day) ────────
+
+const STOPWATCH_KEY = 'study-stopwatch:v1';
+/** Daily study goal, in minutes. */
+export const DAILY_GOAL_MIN = 4 * 60;
+
+/** When the running stopwatch was started, or null when stopped. */
+export function readStopwatch(): number | null {
+  try {
+    const raw = localStorage.getItem(STOPWATCH_KEY);
+    return raw ? (JSON.parse(raw) as { startedAt: number }).startedAt : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeStopwatch(startedAt: number | null) {
+  try {
+    if (startedAt) localStorage.setItem(STOPWATCH_KEY, JSON.stringify({ startedAt }));
+    else localStorage.removeItem(STOPWATCH_KEY);
+  } catch { /* ignore */ }
+}
+
+export const STOPWATCH_STORAGE_KEY = STOPWATCH_KEY;
+
+// The day log only holds whole minutes, so the leftover seconds of each stop
+// are carried into the next stretch the same day (2m 10s → stop → resumes at 2m 10s).
+const CARRY_KEY = 'study-stopwatch-carry:v1';
+
+export function readCarry(today = dayKey()): number {
+  try {
+    const raw = localStorage.getItem(CARRY_KEY);
+    const c = raw ? (JSON.parse(raw) as { day: string; ms: number }) : null;
+    return c && c.day === today ? c.ms : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeCarry(ms: number, day = dayKey()) {
+  try { localStorage.setItem(CARRY_KEY, JSON.stringify({ day, ms })); } catch { /* ignore */ }
+}
+
+/**
+ * Stops a stretch that ran from `startedAt` to `endedAt`: logs its whole
+ * minutes (plus any carried seconds) and keeps the remainder for next time.
+ * Returns the minutes logged.
+ */
+export async function stopStretch(startedAt: number, endedAt: number): Promise<number> {
+  const total = endedAt - startedAt + readCarry(dayKey(new Date(endedAt)));
+  const whole = Math.floor(total / 60_000);
+  writeCarry(total - whole * 60_000, dayKey(new Date(endedAt)));
+  if (whole <= 0) return 0;
+  // Ends at the stop time; starts early enough to hold the carried seconds too.
+  const start = endedAt - whole * 60_000;
+  return logStudy(start, endedAt, 'Study stopwatch');
 }
