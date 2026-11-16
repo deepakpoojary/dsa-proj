@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useChecklist } from './use-checklist';
+import { recordChecks } from './daily-checks';
 import type { StudyItem } from './study-items';
 
 // Done-state for a mixed list of StudyItems: theory questions and site
@@ -38,6 +39,7 @@ export function useStudyProgress(items: StudyItem[], signedIn: boolean) {
           return next;
         });
       flip(done);
+      recordChecks([p.id], done, p.kind);
       const [url, body] =
         p.kind === 'theory'
           ? ['/api/theory-progress', { questionId: p.id, solved: done }]

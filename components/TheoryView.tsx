@@ -12,6 +12,7 @@ import { StarFilter } from './Stars'
 import { NotesCtx, useNoteHost } from './Notes'
 import { theoryItems, StudyItem, StudyTopic } from '@/lib/study-items'
 import { useChecklist } from '@/lib/use-checklist'
+import { recordChecks } from '@/lib/daily-checks'
 
 const BANK_OFF_KEY = 'theory:bank-topics-off'
 const PREFS_KEY = 'theory:prefs'
@@ -117,6 +118,7 @@ export default function TheoryView({
         q.id === questionId ? { ...q, solved, solvedToday: solved ? true : q.solvedToday } : q
       ),
     }))
+    recordChecks([questionId], solved, 'theory')
     fetch('/api/theory-progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

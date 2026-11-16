@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { recordChecks } from './daily-checks';
 
 const LOCAL_KEY = 'checklist:v1';
 
@@ -102,6 +103,7 @@ export function useChecklist(signedIn: boolean) {
         writeLocal(next);
         return next;
       });
+      recordChecks(ids, value, 'checklist');
       if (signedIn && ids.length > 0) void pushToServer(ids, value);
     },
     [signedIn]

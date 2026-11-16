@@ -9,6 +9,7 @@ import SiteNav from './SiteNav';
 import { StarFilter } from './Stars';
 import { useRouter } from 'next/navigation';
 import { setSiteDsa } from './CourseDsaView';
+import { recordChecks } from '@/lib/daily-checks';
 
 function topicId(topic: string) {
   return `topic-${topic.toLowerCase().replace(/\s+/g, '-')}`;
@@ -97,6 +98,7 @@ export default function ProblemsView({
     // set true here; unchecking removes the row entirely so it stops
     // counting toward everything regardless of when it was first solved.
     setProblems((prev) => prev.map((p) => (p.id === problemId ? { ...p, solved, solvedToday: solved ? true : p.solvedToday } : p)));
+    recordChecks([problemId], solved, 'problem');
     fetch('/api/progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

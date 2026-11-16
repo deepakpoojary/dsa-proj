@@ -16,6 +16,7 @@ import {
 } from '@/lib/study-session';
 import { formatDuration } from '@/lib/time-tracking';
 import { parseDayKey } from '@/lib/journal';
+import { checkedToday, DAILY_CHECKS_EVENT, DAILY_CHECKS_STORAGE_KEY } from '@/lib/daily-checks';
 
 const KEY = 'study-session:v1';
 const HEARTBEAT_MS = 15_000;
@@ -184,6 +185,7 @@ export default function SessionGate() {
       <div className="session-countdown" style={{ position: 'fixed', right: '14px', bottom: '14px', zIndex: 950, display: 'flex', alignItems: 'center', gap: '6px' }}>
         <style>{'@media print { .session-countdown { display: none !important; } }'}</style>
         <StudyStopwatch />
+        <CheckedToday />
         <OffPill onTurnOn={turnOn} />
       </div>
     );
@@ -464,5 +466,35 @@ function StudyStopwatch() {
       <span style={{ color: '#6e7681', fontWeight: 400 }}> / {DAILY_GOAL_MIN / 60}h</span>
       {reached && ' 🎉'}
     </button>
+  );
+}
+
+// How many items were ticked today, beside the stopwatch. Updates live from
+// this tab (custom event), other tabs (storage event) and at midnight.
+function CheckedToday() {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    const sync = () => setCount(checkedToday());
+    sync();
+    const onStorage = (e: StorageEvent) => { if (e.key === DAILY_CHECKS_STORAGE_KEY) sync(); };
+    window.addEventListener(DAILY_CHECKS_EVENT, sync);
+    window.addEventListener('storage', onStorage);
+    const t = setInterval(sync, 60_000); // rolls over to 0 after midnight
+    return () => {
+      window.removeEventListener(DAILY_CHECKS_EVENT, sync);
+      window.removeEventListener('storage', onStorage);
+      clearInterval(t);
+    };
+  }, []);
+  if (count === null) return null;
+  return (
+    <span title={`${count} item${count === 1 ? '' : 's'} checked today`}
+      style={{
+        padding: '4px 11px', borderRadius: '999px', border: `1px solid ${count ? '#3fb95088' : '#30363d'}`, background: '#161b22',
+        color: count ? '#3fb950' : '#8b949e', fontSize: '0.78rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+      }}>
+      ✓ {count} today
+    </span>
   );
 }
