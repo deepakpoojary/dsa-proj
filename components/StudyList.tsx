@@ -175,8 +175,8 @@ function effectiveDepth(item: StudyItem, depth: Depth): Depth {
   return depthsFor(item).includes(depth) ? depth : 'short';
 }
 
-// Copies the question text (e.g. to paste into ChatGPT / Gemini).
-function CopyQuestion({ text }: { text: string }) {
+// Copies text with a short "✓ Copied" confirmation.
+function CopyButton({ text, label, title, kind }: { text: string; label: string; title: string; kind: 'question' | 'answer' }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -184,6 +184,7 @@ function CopyQuestion({ text }: { text: string }) {
     return () => clearTimeout(t);
   }, [copied]);
   const copy = async () => {
+    if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -197,14 +198,34 @@ function CopyQuestion({ text }: { text: string }) {
     setCopied(true);
   };
   return (
-    <button type="button" onClick={copy} title="Copy question (C)" aria-label="Copy question" data-copy-question
+    <button type="button" onClick={copy} disabled={!text} title={title} aria-label={title} data-copy={kind}
       style={{
         background: 'none', border: '1px solid #30363d', borderRadius: '6px', color: copied ? '#3fb950' : '#8b949e',
-        fontSize: '0.72rem', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.4,
+        fontSize: '0.72rem', padding: '2px 8px', cursor: text ? 'pointer' : 'default', whiteSpace: 'nowrap', lineHeight: 1.4,
+        opacity: text ? 1 : 0.5,
       }}>
-      {copied ? '✓ Copied' : '⧉ Copy question'}
+      {copied ? '✓ Copied' : label}
     </button>
   );
+}
+
+// Copies the question text (e.g. to paste into ChatGPT / Gemini).
+function CopyQuestion({ text }: { text: string }) {
+  return <CopyButton text={text} label="⧉ Copy question" title="Copy question (C)" kind="question" />;
+}
+
+/** The answer as plain text: markdown as-is, notes as a bullet list, code in a fenced block. */
+function answerText(a: { markdown?: string | null; notes?: NoteLine[]; code?: string | null }): string {
+  if (a.markdown) return a.markdown.trim();
+  const notes = notesToText(a.notes).trim();
+  const code = a.code?.trim();
+  const fence = '```';
+  return [notes, code ? `${fence}\n${code}\n${fence}` : ''].filter(Boolean).join('\n\n');
+}
+
+// Copies the answer currently shown (short / detailed / GPT, including your edits).
+function CopyAnswer({ text }: { text: string }) {
+  return <CopyButton text={text} label="⧉ Copy answer" title="Copy answer (A)" kind="answer" />;
 }
 
 function DepthToggle({ depth, onChange, depths = ['short', 'detailed'] }: { depth: Depth; onChange: (d: Depth) => void; depths?: Depth[] }) {
@@ -371,7 +392,10 @@ function AnswerPopup({
       else if (e.key.toLowerCase() === 'e' && editCtx) { e.preventDefault(); beginEdit(); }
       else if (e.key.toLowerCase() === 't' && depths.length > 1) switchDepth(depths[(depths.indexOf(shown) + 1) % depths.length]);
       else if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !window.getSelection()?.toString()) {
-        (document.querySelector('[role=dialog] [data-copy-question]') as HTMLButtonElement | null)?.click();
+        (document.querySelector('[role=dialog] [data-copy=question]') as HTMLButtonElement | null)?.click();
+      }
+      else if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey && !window.getSelection()?.toString()) {
+        (document.querySelector('[role=dialog] [data-copy=answer]') as HTMLButtonElement | null)?.click();
       }
       else if (e.key.toLowerCase() === 'd' && (canTrack || item.progress.kind === 'checklist')) onToggle(item, !done);
     };
@@ -419,6 +443,7 @@ function AnswerPopup({
             <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {depths.length > 1 && <DepthToggle depth={shown} onChange={switchDepth} depths={depths} />}
               <CopyQuestion text={item.title} />
+              <CopyAnswer text={loading ? '' : answerText(view)} />
             </div>
           </div>
           <Stopwatch />
@@ -523,7 +548,7 @@ function AnswerPopup({
             <DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color="#3fb950" />
             {done ? 'Revised' : 'Mark revised'}
           </label>
-          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised{editCtx ? ' · E to edit' : ''}{depths.length > 1 ? ` · T ${depths.join('/')}` : ''} · C to copy question · Esc to close</span>
+          <span style={{ fontSize: '0.68rem', color: '#6e7681', width: '100%' }}>← → to move · D to mark revised{editCtx ? ' · E to edit' : ''}{depths.length > 1 ? ` · T ${depths.join('/')}` : ''} · C / A to copy question / answer · Esc to close</span>
           </>
           )}
         </div>
@@ -548,6 +573,13 @@ function InlineAnswer({ item }: { item: StudyItem }) {
       <div style={{ marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
         {depths.length > 1 && <DepthToggle depth={shown} onChange={setDepth} depths={depths} />}
         <CopyQuestion text={item.title} />
+        <CopyAnswer text={
+          shown === 'short' ? answerText(item)
+            : detailLoading || gptLoading ? ''
+            : shown === 'gpt' ? answerText({ markdown: ownGpt?.notes ?? gpt })
+            : ownLong ? answerText({ notes: textToNotes(ownLong.notes), code: ownLong.code })
+            : answerText({ notes: detail?.notes, code: detail?.code })
+        } />
       </div>
       {shown === 'short' ? (
         <NotesBody notes={item.notes} code={item.code} />
