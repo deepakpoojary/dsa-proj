@@ -51,6 +51,7 @@ export const SECTIONS = [
   { href: '/', icon: '🧩', label: 'DSA Problems' },
   { href: '/theory', icon: '📖', label: 'Theory Q&A' },
   { href: '/search', icon: '🔎', label: 'Search' },
+  { href: '/glossary', icon: '📚', label: 'Glossary' },
   { href: '/roadmap', icon: '💸', label: 'Salary Roadmap' },
   { href: '/revision', icon: '🔁', label: 'Revision' },
   { href: '/net-worth', icon: '💰', label: 'Net Worth' },
