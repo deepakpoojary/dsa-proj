@@ -53,6 +53,7 @@ export const SECTIONS = [
   { href: '/search', icon: '🔎', label: 'Search' },
   { href: '/glossary', icon: '📚', label: 'Glossary' },
   { href: '/roadmap', icon: '💸', label: 'Salary Roadmap' },
+  { href: '/salaries', icon: '💼', label: 'Skill Salaries' },
   { href: '/revision', icon: '🔁', label: 'Revision' },
   { href: '/net-worth', icon: '💰', label: 'Net Worth' },
   { href: '/resume', icon: '📄', label: 'Resume Builder' },
