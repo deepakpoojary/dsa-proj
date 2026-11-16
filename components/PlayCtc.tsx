@@ -4,7 +4,7 @@
 // watch a "dream CTC" grow. It is NOT linked to the real checklist or
 // progress; ticks and custom items live in this browser only.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RoadmapLever } from '@/lib/salary-roadmap';
 
 const PLAY_KEY = 'salary-roadmap:play:v1';
@@ -32,6 +32,7 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [pop, setPop] = useState<{ id: number; lpa: number } | null>(null);
+  const lastClicked = useRef<number | null>(null);
 
   useEffect(() => {
     try {
@@ -63,11 +64,25 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
   const possible = items.reduce((a, i) => a + i.lpa, 0);
   const pct = possible ? Math.min(100, (gained / possible) * 100) : 0;
 
-  const toggleItem = (it: PlayItem) => {
+  // Click toggles one item; Shift+click sets every item between the last one
+  // clicked and this one (either direction) to this item's new state.
+  const clickItem = (e: React.MouseEvent, idx: number) => {
+    e.preventDefault(); // we toggle ourselves, so label + checkbox clicks don't double-fire
+    const it = items[idx];
     const on = !ticked.has(it.id);
-    setState((s) => ({ ...s, ticked: on ? [...s.ticked, it.id] : s.ticked.filter((x) => x !== it.id) }));
+    const last = lastClicked.current;
+    const range = e.shiftKey && last !== null && last < items.length
+      ? items.slice(Math.min(last, idx), Math.max(last, idx) + 1)
+      : [it];
+    lastClicked.current = idx;
+    const ids = new Set(range.map((r) => r.id));
+    setState((s) => ({
+      ...s,
+      ticked: on ? [...new Set([...s.ticked, ...ids])] : s.ticked.filter((x) => !ids.has(x)),
+    }));
+    const added = on ? range.filter((r) => !ticked.has(r.id)).reduce((a, r) => a + r.lpa, 0) : 0;
     // A new id restarts the pop animation when ticking quickly.
-    if (on) setPop((p) => ({ id: (p?.id ?? 0) + 1, lpa: it.lpa }));
+    if (added > 0) setPop((p) => ({ id: (p?.id ?? 0) + 1, lpa: added }));
   };
   const tickAll = () => {
     const rest = items.filter((i) => !ticked.has(i.id)).reduce((a, i) => a + i.lpa, 0);
@@ -128,18 +143,18 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 12px' }}>
-        {items.map((it) => {
+        {items.map((it, idx) => {
           const on = ticked.has(it.id);
           return (
-            <label key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: on ? '#e6edf3' : '#c9d1d9', cursor: 'pointer', padding: '3px 0' }}>
-              <input type="checkbox" checked={on} onChange={() => toggleItem(it)} style={{ accentColor: '#bc8cff' }} />
+            <label key={it.id} onClick={(e) => clickItem(e, idx)} style={{ userSelect: 'none', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: on ? '#e6edf3' : '#c9d1d9', cursor: 'pointer', padding: '3px 0' }}>
+              <input type="checkbox" checked={on} readOnly style={{ accentColor: '#bc8cff' }} />
               <span title={it.name}
                 style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: on ? 'line-through' : 'none', textDecorationColor: '#6e7681' }}>
                 {it.name}
               </span>
               <span style={{ color: on ? '#3fb950' : '#8b949e', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>+{money(it.lpa)}</span>
               {it.custom && (
-                <button type="button" onClick={(e) => { e.preventDefault(); removeCustom(it.id); }} aria-label={`Remove ${it.name}`}
+                <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); lastClicked.current = null; removeCustom(it.id); }} aria-label={`Remove ${it.name}`}
                   style={{ background: 'none', border: 'none', color: '#6e7681', cursor: 'pointer', padding: 0, fontSize: '0.9rem', lineHeight: 1 }}>
                   ×
                 </button>
@@ -159,7 +174,7 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
         </button>
       </form>
       <div style={{ fontSize: '0.68rem', color: '#6e7681', marginTop: '0.5rem' }}>
-        Not linked to your real progress: ticking here doesn&apos;t mark anything as done. Saved in this browser only.
+        Tip: tick one, then Shift+click another to tick everything in between. Not linked to your real progress: ticking here doesn&apos;t mark anything as done. Saved in this browser only.
       </div>
     </div>
   );
