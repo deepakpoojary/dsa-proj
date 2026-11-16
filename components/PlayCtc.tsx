@@ -33,6 +33,19 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
   const [amount, setAmount] = useState('');
   const [pop, setPop] = useState<{ id: number; lpa: number } | null>(null);
   const lastClicked = useRef<number | null>(null);
+  const grid = useRef<HTMLDivElement>(null);
+
+  // Items between two grid cells along one straight line: the same row, or the
+  // same column. Anything else (diagonal) is just the clicked cell.
+  const lineBetween = (a: number, b: number): number[] => {
+    const cols = grid.current ? Math.max(1, getComputedStyle(grid.current).gridTemplateColumns.split(' ').filter(Boolean).length) : 1;
+    const [ra, ca, rb, cb] = [Math.floor(a / cols), a % cols, Math.floor(b / cols), b % cols];
+    const out: number[] = [];
+    if (ra === rb) for (let c = Math.min(ca, cb); c <= Math.max(ca, cb); c++) out.push(ra * cols + c);
+    else if (ca === cb) for (let r = Math.min(ra, rb); r <= Math.max(ra, rb); r++) out.push(r * cols + ca);
+    else out.push(b);
+    return out.filter((i) => i < items.length);
+  };
 
   useEffect(() => {
     try {
@@ -64,16 +77,14 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
   const possible = items.reduce((a, i) => a + i.lpa, 0);
   const pct = possible ? Math.min(100, (gained / possible) * 100) : 0;
 
-  // Click toggles one item; Shift+click sets every item between the last one
-  // clicked and this one (either direction) to this item's new state.
+  // Click toggles one item; Shift+click sets every item on the straight line
+  // (same row or same column) between the last one clicked and this one.
   const clickItem = (e: React.MouseEvent, idx: number) => {
     e.preventDefault(); // we toggle ourselves, so label + checkbox clicks don't double-fire
     const it = items[idx];
     const on = !ticked.has(it.id);
     const last = lastClicked.current;
-    const range = e.shiftKey && last !== null && last < items.length
-      ? items.slice(Math.min(last, idx), Math.max(last, idx) + 1)
-      : [it];
+    const range = e.shiftKey && last !== null && last < items.length ? lineBetween(last, idx).map((i) => items[i]) : [it];
     lastClicked.current = idx;
     const ids = new Set(range.map((r) => r.id));
     setState((s) => ({
@@ -142,7 +153,7 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
         <div style={{ height: '100%', width: `${pct}%`, background: '#bc8cff', borderRadius: '3px', transition: 'width 0.4s ease-out' }} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 12px' }}>
+      <div ref={grid} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 12px' }}>
         {items.map((it, idx) => {
           const on = ticked.has(it.id);
           return (
@@ -174,7 +185,7 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
         </button>
       </form>
       <div style={{ fontSize: '0.68rem', color: '#6e7681', marginTop: '0.5rem' }}>
-        Tip: tick one, then Shift+click another to tick everything in between. Not linked to your real progress: ticking here doesn&apos;t mark anything as done. Saved in this browser only.
+        Tip: tick one, then Shift+click another in the same row or column to tick the boxes between them. Not linked to your real progress: ticking here doesn&apos;t mark anything as done. Saved in this browser only.
       </div>
     </div>
   );
