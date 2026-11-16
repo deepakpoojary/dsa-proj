@@ -69,6 +69,11 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
     // A new id restarts the pop animation when ticking quickly.
     if (on) setPop((p) => ({ id: (p?.id ?? 0) + 1, lpa: it.lpa }));
   };
+  const tickAll = () => {
+    const rest = items.filter((i) => !ticked.has(i.id)).reduce((a, i) => a + i.lpa, 0);
+    setState((s) => ({ ...s, ticked: items.map((i) => i.id) }));
+    if (rest > 0) setPop((p) => ({ id: (p?.id ?? 0) + 1, lpa: rest }));
+  };
   const addCustom = (e: React.FormEvent) => {
     e.preventDefault();
     const v = Number(amount);
@@ -102,12 +107,20 @@ export default function PlayCtc({ base, levers }: { base: number; levers: Roadma
             dream CTC · {lpa(base)} + {money(gained)} ticked{possible > 0 && ` · ${lpa(base + possible)} if you tick everything`}
           </div>
         </div>
-        {state.ticked.length > 0 && (
-          <button type="button" onClick={() => setState((s) => ({ ...s, ticked: [] }))}
-            style={{ background: 'none', border: '1px solid #30363d', borderRadius: '6px', color: '#8b949e', fontSize: '0.72rem', padding: '3px 10px', cursor: 'pointer' }}>
-            Untick all
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {items.some((i) => !ticked.has(i.id)) && (
+            <button type="button" onClick={tickAll}
+              style={{ background: 'rgba(188,140,255,0.12)', border: '1px solid #bc8cff66', borderRadius: '6px', color: '#d2a8ff', fontSize: '0.72rem', padding: '3px 10px', cursor: 'pointer' }}>
+              ✓ Tick all
+            </button>
+          )}
+          {state.ticked.length > 0 && (
+            <button type="button" onClick={() => setState((s) => ({ ...s, ticked: [] }))}
+              style={{ background: 'none', border: '1px solid #30363d', borderRadius: '6px', color: '#8b949e', fontSize: '0.72rem', padding: '3px 10px', cursor: 'pointer' }}>
+              Untick all
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ height: '6px', borderRadius: '3px', background: '#21262d', margin: '0.8rem 0 0.9rem', overflow: 'hidden' }}>
