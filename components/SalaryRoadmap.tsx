@@ -2,6 +2,7 @@
 
 import { useContext, useEffect, useMemo, useState } from 'react';
 import SiteNav from '@/components/SiteNav';
+import PlayCtc from '@/components/PlayCtc';
 import { NoteButton, NotesCtx, useNoteHost } from '@/components/Notes';
 import type { Roadmap, RoadmapInput, RoadmapLever } from '@/lib/salary-roadmap';
 import type { StudyStats } from '@/lib/study-stats';
@@ -167,8 +168,6 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
   }, [roadmap, dsaSource, stats, checked]);
 
   const studyLevers = roadmap?.levers.filter((l) => l.key !== 'baseline') ?? [];
-  const studyTotal = studyLevers.reduce((a, l) => a + l.lpa, 0);
-  const unlocked = studyLevers.reduce((a, l) => a + unlockedLpa(backings.get(l.key)?.rows ?? []), 0);
   const totalHours = studyLevers.reduce((a, l) => a + l.hours, 0);
 
   return (
@@ -263,37 +262,13 @@ export default function SalaryRoadmap({ signedIn, stats }: { signedIn: boolean; 
               </div>
             )}
 
-            {/* Money bar */}
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#e6edf3' }}>
-                  Where the +{lpa(roadmap.reachableCtc - roadmap.currentCtc)} comes from
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#3fb950', fontWeight: 600 }}>
-                  {lpa(unlocked)} of {lpa(studyTotal)} unlocked by study
-                </span>
-              </div>
-              <div style={{ display: 'flex', height: '14px', borderRadius: '7px', overflow: 'hidden', gap: '2px', background: '#0d1117' }}>
-                {roadmap.levers.map((l, i) => (
-                  <div
-                    key={l.key}
-                    title={`${l.name}: +${lpa(l.lpa)}`}
-                    style={{ flex: l.lpa, background: l.key === 'baseline' ? BASELINE_COLOR : LEVER_COLORS[i % LEVER_COLORS.length] }}
-                  />
-                ))}
-              </div>
-              <div style={{ height: '4px', marginTop: '6px', borderRadius: '2px', background: '#21262d' }}>
-                <div style={{ height: '100%', width: `${studyTotal ? Math.min(100, (unlocked / studyTotal) * 100) : 0}%`, background: '#3fb950', borderRadius: '2px', transition: 'width 0.3s' }} />
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', marginTop: '0.8rem' }}>
-                {roadmap.levers.map((l, i) => (
-                  <span key={l.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#c9d1d9' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: l.key === 'baseline' ? BASELINE_COLOR : LEVER_COLORS[i % LEVER_COLORS.length] }} />
-                    {l.name} <strong style={{ color: '#e6edf3' }}>+{lpa(l.lpa)}</strong>
-                  </span>
-                ))}
-              </div>
-            </div>
+            <CtcProgress
+              roadmap={roadmap}
+              unlockedBy={(key) => unlockedLpa(backings.get(key)?.rows ?? [])}
+              colorOf={(l, i) => (l.key === 'baseline' ? BASELINE_COLOR : LEVER_COLORS[i % LEVER_COLORS.length])}
+            />
+
+            <PlayCtc base={roadmap.currentCtc} levers={roadmap.levers} />
 
             {/* Levers */}
             {roadmap.levers.map((l, i) => (
@@ -616,6 +591,114 @@ function HopRow({ ctc, when, note, muted }: { ctc: number; when: string; note: s
       <span style={{ minWidth: '92px', fontWeight: 700, color: muted ? '#8b949e' : '#e6edf3', fontSize: '0.9rem' }}>{lpa(ctc)}</span>
       <span style={{ minWidth: '84px', fontSize: '0.75rem', color: '#8b949e' }}>{when}</span>
       <span style={{ fontSize: '0.78rem', color: '#c9d1d9' }}>{note}</span>
+    </div>
+  );
+}
+
+// Current CTC → potential CTC as one bar: grey = what you earn now, each colour
+// = a skill's share of the hike, solid for the part your ticked items unlock
+// and faded for what's still left. The marker is roughly what you'd clear if
+// you switched today (current + a plain switch + what you've unlocked).
+function CtcProgress({ roadmap, unlockedBy, colorOf }: {
+  roadmap: Roadmap;
+  unlockedBy: (key: string) => number;
+  colorOf: (l: RoadmapLever, i: number) => string;
+}) {
+  const [hover, setHover] = useState<string | null>(null);
+  const potential = Math.max(roadmap.reachableCtc, roadmap.currentCtc + roadmap.levers.reduce((a, l) => a + l.lpa, 0), 0.1);
+  const parts = roadmap.levers.map((l, i) => {
+    const got = l.key === 'baseline' ? l.lpa : Math.min(l.lpa, unlockedBy(l.key));
+    return { l, color: colorOf(l, i), got, left: Math.max(0, l.lpa - got) };
+  });
+  const study = parts.filter((p) => p.l.key !== 'baseline');
+  const studyTotal = study.reduce((a, p) => a + p.l.lpa, 0);
+  const studyGot = study.reduce((a, p) => a + p.got, 0);
+  const worthNow = roadmap.currentCtc + parts.reduce((a, p) => a + p.got, 0);
+  const pctStudy = studyTotal ? Math.round((studyGot / studyTotal) * 100) : 0;
+  const pos = (v: number) => `${Math.min(100, (v / potential) * 100)}%`;
+
+  const hovered = hover === 'current'
+    ? `Current CTC: ${lpa(roadmap.currentCtc)}`
+    : (() => {
+        const p = parts.find((x) => x.l.key === hover);
+        if (!p) return null;
+        if (p.l.key === 'baseline') return `${p.l.name}: +${lpa(p.l.lpa)} — you get this just by switching`;
+        return `${p.l.name}: ${money(p.got)} of ${lpa(p.l.lpa)} unlocked (${p.l.lpa ? Math.round((p.got / p.l.lpa) * 100) : 0}%)`;
+      })();
+
+  const seg = (key: string, value: number, background: string, opacity = 1) => value > 0 && (
+    <div key={key} onMouseEnter={() => setHover(key.split('#')[0])} onMouseLeave={() => setHover(null)}
+      style={{ flex: `${value} 0 0`, minWidth: '2px', background, opacity, cursor: 'default', transition: 'opacity 0.2s' }} />
+  );
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <div>
+          <div style={labelStyle}>Worth if you switch today</div>
+          <div style={{ fontSize: '1.7rem', fontWeight: 800, color: '#e6edf3', lineHeight: 1.1 }}>{lpa(worthNow)}</div>
+          <div style={{ fontSize: '0.78rem', color: '#8b949e', marginTop: '4px' }}>
+            {lpa(roadmap.currentCtc)} now + {lpa(worthNow - roadmap.currentCtc)} from switching and what you&apos;ve checked
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={labelStyle}>Potential</div>
+          <div style={{ fontSize: '1.7rem', fontWeight: 800, color: '#8b949e', lineHeight: 1.1 }}>{lpa(potential)}</div>
+          <div style={{ fontSize: '0.78rem', color: '#3fb950', marginTop: '4px', fontWeight: 600 }}>
+            {pctStudy}% of the study hike unlocked · {money(studyGot)} of {lpa(studyTotal)}
+          </div>
+        </div>
+      </div>
+
+      {/* The bar */}
+      <div style={{ position: 'relative', marginTop: '1.4rem' }}>
+        <div style={{ position: 'absolute', left: pos(worthNow), top: '-16px', transform: 'translateX(-50%)', fontSize: '0.66rem', color: '#e6edf3', whiteSpace: 'nowrap' }}>
+          ▼ you today
+        </div>
+        <div role="img" aria-label={`Current ${lpa(roadmap.currentCtc)}, worth ${lpa(worthNow)} today, potential ${lpa(potential)}`}
+          style={{ display: 'flex', gap: '2px', height: '22px', borderRadius: '4px', overflow: 'hidden', background: '#0d1117' }}>
+          {seg('current', roadmap.currentCtc, BASELINE_COLOR)}
+          {parts.flatMap((p) => [
+            seg(`${p.l.key}#got`, p.got, p.color, hover && hover !== p.l.key ? 0.5 : 1),
+            seg(`${p.l.key}#left`, p.left, p.color, hover === p.l.key ? 0.45 : 0.22),
+          ])}
+        </div>
+        <div style={{ position: 'absolute', left: pos(worthNow), top: '-3px', bottom: '-3px', width: '2px', background: '#e6edf3', transform: 'translateX(-1px)', borderRadius: '1px', pointerEvents: 'none' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', color: '#6e7681', marginTop: '4px' }}>
+          <span>₹0</span>
+          <span>{lpa(potential)}</span>
+        </div>
+      </div>
+      <div style={{ minHeight: '1.2em', fontSize: '0.76rem', color: '#c9d1d9', marginTop: '2px' }}>
+        {hovered ?? <span style={{ color: '#6e7681' }}>Hover a block for details · solid = unlocked by your checked items, faded = still to study</span>}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '0.8rem' }}>
+        <LegendRow color={BASELINE_COLOR} name="Current CTC" value={lpa(roadmap.currentCtc)} pct={100} />
+        {parts.map((p) => (
+          <LegendRow key={p.l.key} color={p.color} name={p.l.name}
+            value={p.l.key === 'baseline' ? `+${lpa(p.l.lpa)}` : `${money(p.got)} / ${lpa(p.l.lpa)}`}
+            pct={p.l.lpa ? (p.got / p.l.lpa) * 100 : 0}
+            active={hover === p.l.key} onHover={(on) => setHover(on ? p.l.key : null)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LegendRow({ color, name, value, pct, active, onHover }: {
+  color: string; name: string; value: string; pct: number; active?: boolean; onHover?: (on: boolean) => void;
+}) {
+  return (
+    <div onMouseEnter={() => onHover?.(true)} onMouseLeave={() => onHover?.(false)}
+      style={{ display: 'grid', gridTemplateColumns: '10px minmax(0, 1fr) 70px auto', alignItems: 'center', gap: '8px', fontSize: '0.76rem', color: active ? '#e6edf3' : '#c9d1d9' }}>
+      <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: color }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      <span style={{ height: '4px', borderRadius: '2px', background: '#21262d', overflow: 'hidden' }}>
+        <span style={{ display: 'block', height: '100%', width: `${Math.min(100, pct)}%`, background: color }} />
+      </span>
+      <span style={{ color: '#8b949e', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
