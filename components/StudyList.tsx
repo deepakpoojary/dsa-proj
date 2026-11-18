@@ -662,6 +662,9 @@ export function arrange(items: StudyItem[], minStars: number, sort: 'order' | 's
 
 // ── List ───────────────────────────────────────────────────────────────────
 
+// Question number shown beside the checkbox (position in the current list).
+const numStyle: React.CSSProperties = { fontSize: '0.74rem', color: '#6e7681', fontVariantNumeric: 'tabular-nums', minWidth: '2.1em', textAlign: 'right', flexShrink: 0 };
+
 export default function StudyList({
   items: rawItems, topics, mode, isDone, onToggle, canTrack, showGroups = true, showTopic = false, renderInline,
 }: {
@@ -741,6 +744,7 @@ export default function StudyList({
               <div style={{ background: '#161b22', border: '1px solid #30363d', borderLeft: `3px solid ${color}`, borderRadius: '10px', marginBottom: '8px', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '12px 14px 10px' }}>
                   <span style={{ paddingTop: '3px' }}><DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color={color} /></span>
+                  <span style={{ ...numStyle, paddingTop: '3px' }}>{idx + 1}.</span>
                   <div style={{ flex: 1, color: '#e6edf3', fontSize: '0.92rem', fontWeight: 600, lineHeight: 1.5 }}>{item.title}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '3px' }}>
                     {meta}
@@ -785,6 +789,7 @@ export default function StudyList({
               }}
             >
               <DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color={color} />
+              <span style={numStyle}>{idx + 1}.</span>
               {item.kind && <span style={{ fontSize: '0.72rem' }} title={item.kind}>{KIND_ICON[item.kind] ?? '•'}</span>}
               <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', color: done ? '#8b949e' : '#e6edf3', lineHeight: 1.45 }}>{item.title}</span>
               {meta}
