@@ -46,6 +46,8 @@ export const SECTIONS = [
   { href: '/dashboard', icon: '🏠', label: 'Dashboard' },
   { href: '/journal', icon: '📓', label: 'Journal' },
   { href: '/goals', icon: '🎯', label: 'Goals' },
+  { href: '/habits', icon: '🔁', label: 'Habits' },
+  { href: '/notes', icon: '📝', label: 'Notes' },
   { href: '/time', icon: '⏱', label: 'Time' },
   { href: '/mileage', icon: '⛽', label: 'Mileage' },
   { href: '/', icon: '🧩', label: 'DSA Problems' },
