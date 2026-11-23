@@ -13,6 +13,8 @@ export interface Block {
   text: string;
   indent: number;
   checked?: boolean;
+  /** Its children are folded away (Notion-style toggle). */
+  collapsed?: boolean;
 }
 
 export interface NoteDoc {
@@ -70,6 +72,26 @@ export function outdent(blocks: Block[], i: number): Block[] {
   return shift(blocks, i, subtreeEnd(blocks, i), -1);
 }
 
+/** Lines a..b (inclusive) plus the children of the last one: the unit a multi-line selection moves as. */
+export function rangeEnd(blocks: Block[], a: number, b: number): number {
+  let end = b + 1;
+  for (let k = a; k <= b; k++) end = Math.max(end, subtreeEnd(blocks, k));
+  return end;
+}
+
+/** Tab on a selection of lines a..b: all one level deeper, if the first one can go. */
+export function indentRange(blocks: Block[], a: number, b: number): Block[] {
+  if (a === b) return indent(blocks, a);
+  if (a <= 0 || blocks[a].indent > blocks[a - 1].indent) return blocks;
+  return normalize(shift(blocks, a, rangeEnd(blocks, a, b), 1));
+}
+
+/** Shift+Tab on a selection: every line that can go one level shallower does. */
+export function outdentRange(blocks: Block[], a: number, b: number): Block[] {
+  if (a === b) return outdent(blocks, a);
+  return normalize(shift(blocks, a, rangeEnd(blocks, a, b), -1));
+}
+
 /** Moves the block range [from, to) so it starts at `at` (an index in the array without it). */
 function relocate(blocks: Block[], from: number, to: number, at: number, newIndent?: number): Block[] {
   const chunk = blocks.slice(from, to);
@@ -80,17 +102,15 @@ function relocate(blocks: Block[], from: number, to: number, at: number, newInde
 }
 
 /** Alt+Shift+↑: swap with the block (and its children) above. Returns the moved block's new index. */
-export function moveUp(blocks: Block[], i: number): { blocks: Block[]; index: number } {
+export function moveUp(blocks: Block[], i: number, end = subtreeEnd(blocks, i)): { blocks: Block[]; index: number } {
   if (i <= 0) return { blocks, index: i };
-  const end = subtreeEnd(blocks, i);
   let k = i - 1;
   while (k > 0 && blocks[k].indent > blocks[i].indent) k--;
   return { blocks: relocate(blocks, i, end, k), index: k };
 }
 
 /** Alt+Shift+↓: swap with the block (and its children) below. */
-export function moveDown(blocks: Block[], i: number): { blocks: Block[]; index: number } {
-  const end = subtreeEnd(blocks, i);
+export function moveDown(blocks: Block[], i: number, end = subtreeEnd(blocks, i)): { blocks: Block[]; index: number } {
   if (end >= blocks.length) return { blocks, index: i };
   // A sibling below jumps over us with its children; a shallower block alone.
   const after = blocks[end].indent >= blocks[i].indent ? subtreeEnd(blocks, end) : end + 1;
@@ -109,6 +129,17 @@ export function dropAt(blocks: Block[], i: number, target: number, place: 'befor
   const hasKids = (rest[at]?.indent ?? -1) > blocks[target].indent;
   const lvl = place === 'after' && hasKids ? blocks[target].indent + 1 : blocks[target].indent;
   return { blocks: relocate(blocks, i, end, at, lvl), index: at };
+}
+
+/** Indexes hidden because an ancestor is collapsed. */
+export function hiddenSet(blocks: Block[]): Set<number> {
+  const out = new Set<number>();
+  let below = Infinity; // hide everything deeper than this indent
+  blocks.forEach((b, i) => {
+    if (b.indent > below) { out.add(i); return; }
+    below = b.collapsed ? b.indent : Infinity;
+  });
+  return out;
 }
 
 /** 1-based number of a numbered block among its consecutive numbered siblings. */
@@ -136,4 +167,85 @@ export function toPlainText(doc: NoteDoc): string {
       return pad + mark + b.text;
     })
     .join('\n');
+}
+
+// ── Paste: Google Docs / web lists and plain-text lists → blocks ───────────
+
+type Parsed = Omit<Block, 'id'>;
+
+const LINE_MARK = /^(☐|☑|☒|✅|✔|\[ ?\]|\[[xX✓]\]|[-*•◦▪▫●○■□–]|\d+[.)])\s+/;
+
+/** One plain-text line → a block: leading tabs / spaces become indent, a marker sets the type. */
+function parseLine(raw: string): Parsed {
+  const lead = /^[\t ]*/.exec(raw)![0];
+  const indent = Math.min(MAX_INDENT, (lead.match(/\t/g)?.length ?? 0) + Math.floor(lead.replace(/\t/g, '').length / 2));
+  let text = raw.slice(lead.length);
+  const m = LINE_MARK.exec(text);
+  if (!m) return { type: 'text', text: text.trimEnd(), indent };
+  const mark = m[1];
+  text = text.slice(m[0].length).trimEnd();
+  if (/^(☐|\[ ?\])$/.test(mark)) return { type: 'check', text, indent, checked: false };
+  if (/^(☑|☒|✅|✔|\[[xX✓]\])$/.test(mark)) return { type: 'check', text, indent, checked: true };
+  if (/^\d/.test(mark)) return { type: 'number', text, indent };
+  return { type: 'bullet', text, indent };
+}
+
+export function parsePlainList(text: string): Parsed[] {
+  return text.replace(/\r\n?/g, '\n').split('\n').filter((l, i, all) => l.trim() || (i > 0 && i < all.length - 1)).map(parseLine);
+}
+
+/** True when plain text looks like a list worth splitting into blocks. */
+export function looksLikeList(text: string): boolean {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n').filter((l) => l.trim());
+  return lines.length > 1 || lines.some((l) => LINE_MARK.test(l.trimStart()));
+}
+
+/** Text of an element, without the text of lists nested inside it. */
+function ownText(el: Element): string {
+  let out = '';
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === 3) out += n.textContent ?? '';
+    else if (n.nodeType === 1) {
+      const e = n as Element;
+      if (e.tagName === 'UL' || e.tagName === 'OL') return;
+      if (e.tagName === 'BR') out += ' ';
+      else out += ownText(e);
+    }
+  });
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Clipboard HTML (Google Docs, web pages) → blocks. Google Docs marks
+ * checklist items with role="checkbox" + aria-checked and nesting with
+ * aria-level; other sites nest <ul>/<ol>. Returns null if there's no list.
+ */
+export function parseHtmlList(html: string): Parsed[] | null {
+  if (typeof DOMParser === 'undefined') return null;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  if (!doc.querySelector('li')) return null;
+  const out: Parsed[] = [];
+  for (const el of doc.body.querySelectorAll('li, p, h1, h2, h3, h4, h5, h6')) {
+    if (el.tagName !== 'LI' && el.closest('li')) continue; // a <p> inside a list item
+    const text = ownText(el);
+    if (el.tagName !== 'LI') {
+      if (text) out.push({ type: /^H\d$/.test(el.tagName) ? 'heading' : 'text', text, indent: 0 });
+      continue;
+    }
+    let depth = 0;
+    for (let p = el.parentElement; p && p !== doc.body; p = p.parentElement) if (p.tagName === 'UL' || p.tagName === 'OL') depth++;
+    const level = Number(el.getAttribute('aria-level'));
+    const indent = Math.min(MAX_INDENT, Math.max(0, level > 0 ? level - 1 : depth - 1));
+    const box = el.querySelector(':scope > input[type=checkbox], :scope > * > input[type=checkbox]') as HTMLInputElement | null;
+    const ariaChecked = el.getAttribute('aria-checked') ?? el.querySelector('[aria-checked]')?.getAttribute('aria-checked') ?? null;
+    const isCheck = el.getAttribute('role') === 'checkbox' || ariaChecked !== null || !!box || /^(☐|☑|☒)\s/.test(text);
+    if (isCheck) {
+      const struck = /line-through/.test(el.getAttribute('style') ?? '') || !!el.querySelector('[style*="line-through"], s, del, strike');
+      const checked = ariaChecked === 'true' || !!box?.hasAttribute('checked') || /^(☑|☒)\s/.test(text) || struck;
+      out.push({ type: 'check', text: text.replace(/^(☐|☑|☒)\s+/, ''), indent, checked });
+    } else {
+      out.push({ type: el.parentElement?.tagName === 'OL' ? 'number' : 'bullet', text, indent });
+    }
+  }
+  return out.length ? out : null;
 }

@@ -16,12 +16,13 @@ import SiteNav from './SiteNav';
 import { useDocs, DOC_STATUS_LABEL } from '@/lib/use-docs';
 import { newId } from '@/lib/journal';
 import {
-  type Block, type BlockType, type NoteDoc, dropAt, indent as indentAt, moveDown, moveUp, newBlock, newNote,
-  normalize, noteText, numberOf, outdent as outdentAt, toPlainText,
+  type Block, type BlockType, type NoteDoc, dropAt, hiddenSet, indentRange, moveDown, moveUp, newBlock, newNote, outdentRange, rangeEnd, subtreeEnd,
+  looksLikeList, normalize, noteText, numberOf, parseHtmlList, parsePlainList, toPlainText,
 } from '@/lib/outline';
 
 const SELECTED_KEY = 'notes:selected';
 const BULLETS = ['•', '◦', '▪'];
+const NEWLINE = String.fromCharCode(10);
 
 export default function NotesView({ signedIn }: { signedIn: boolean }) {
   const { docs, setDoc, status } = useDocs<NoteDoc>('outline', signedIn);
@@ -150,6 +151,14 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
   const [active, setActive] = useState<string | null>(null);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[]; lastAt: number; lastKind: string }>({ past: [], future: [], lastAt: 0, lastKind: '' });
   const [drag, setDrag] = useState<{ from: number; over: number; place: 'before' | 'after' } | null>(null);
+  // Multi-line selection (anchor -> focus, by block id), like selecting several lines in Docs.
+  const [sel, setSel] = useState<{ anchor: string; focus: string } | null>(null);
+  const mouseFrom = useRef<string | null>(null);
+  useEffect(() => {
+    const up = () => { mouseFrom.current = null; };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
 
   // The same note changed elsewhere (another device synced in): take it.
   useEffect(() => {
@@ -212,21 +221,116 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
   const idx = (id: string) => blocks.findIndex((b) => b.id === id);
   const patch = (i: number, p: Partial<Block>) => blocks.map((b, k) => (k === i ? { ...b, ...p } : b));
 
-  // ── Operations on the block at i (toolbar + keys) ──
-  const doIndent = (i: number) => commit(indentAt(blocks, i), { id: blocks[i].id, pos: caretOf(blocks[i].id) });
-  const doOutdent = (i: number) => commit(outdentAt(blocks, i), { id: blocks[i].id, pos: caretOf(blocks[i].id) });
-  const doMove = (i: number, dir: -1 | 1) => {
-    const r = dir < 0 ? moveUp(blocks, i) : moveDown(blocks, i);
-    if (r.blocks !== blocks) commit(r.blocks, { id: blocks[i].id, pos: caretOf(blocks[i].id) });
+  // Folding (Notion-style): lines under a collapsed line are hidden.
+  const hidden = hiddenSet(blocks);
+  const hasKids = (i: number) => subtreeEnd(blocks, i) > i + 1;
+  const prevVisible = (i: number) => { let k = i - 1; while (k >= 0 && hidden.has(k)) k--; return k; };
+  const nextVisible = (i: number) => { let k = i + 1; while (k < blocks.length && hidden.has(k)) k++; return k < blocks.length ? k : -1; };
+  const toggleFold = (i: number) => {
+    if (!hasKids(i)) return;
+    commit(patch(i, { collapsed: !blocks[i].collapsed || undefined }), keepFocus(i));
   };
-  const setType = (i: number, type: BlockType) => {
+  /** After indenting, open the line it went under so it doesn't vanish. */
+  const expandParentOf = (list: Block[], i: number): Block[] => {
+    for (let k = i - 1; k >= 0; k--) {
+      if (list[k].indent < list[i].indent) return list[k].collapsed ? list.map((x, n) => (n === k ? { ...x, collapsed: undefined } : x)) : list;
+    }
+    return list;
+  };
+
+  // Selected lines a..b (inclusive), or just line i when nothing is multi-selected.
+  const selIdx = sel ? [idx(sel.anchor), idx(sel.focus)] : null;
+  const multi = !!selIdx && selIdx[0] >= 0 && selIdx[1] >= 0 && selIdx[0] !== selIdx[1];
+  const selA = multi ? Math.min(selIdx![0], selIdx![1]) : -1;
+  const selB = multi ? Math.max(selIdx![0], selIdx![1]) : -1;
+  const rangeOf = (i: number): [number, number] => (multi ? [selA, selB] : [i, i]);
+  function keepFocus(i: number) { return { id: blocks[i].id, pos: caretOf(blocks[i].id) }; }
+
+  // ── Operations on line i, or on the whole selection (toolbar + keys) ──
+  const doIndent = (i: number) => {
+    const [a, b] = rangeOf(i);
+    const next = indentRange(blocks, a, b);
+    if (next !== blocks) commit(expandParentOf(next, a), keepFocus(i));
+  };
+  const doOutdent = (i: number) => { const [a, b] = rangeOf(i); commit(outdentRange(blocks, a, b), keepFocus(i)); };
+  const doMove = (i: number, dir: -1 | 1) => {
+    const [a, b] = rangeOf(i);
+    const end = rangeEnd(blocks, a, b);
+    const r = dir < 0 ? moveUp(blocks, a, end) : moveDown(blocks, a, end);
+    if (r.blocks !== blocks) commit(r.blocks, keepFocus(i));
+  };
+  const deleteRange = (a: number, b: number) => {
+    let next = normalize([...blocks.slice(0, a), ...blocks.slice(b + 1)]);
+    if (!next.length) next = [newBlock('bullet')];
+    const to = next[Math.max(0, a - 1)];
+    setSel(null);
+    commit(next, { id: to.id, pos: a > 0 ? to.text.length : 0 });
+  };
+  const rangeText = (a: number, b: number) => {
+    const part = blocks.slice(a, b + 1);
+    const min = Math.min(...part.map((x) => x.indent));
+    return toPlainText({ title: '', blocks: part.map((x) => ({ ...x, indent: x.indent - min })), createdAt: 0, updatedAt: 0 });
+  };
+  /** Puts parsed lines in place of the selection in block i (splitting it), shifted to its indent. */
+  const insertParsed = (i: number, parsed: Omit<Block, 'id'>[], s: number, e: number) => {
     const b = blocks[i];
+    const before = b.text.slice(0, s);
+    const after = b.text.slice(e);
+    const items: Block[] = parsed.map((p) => ({ ...p, id: newId(), indent: p.indent + b.indent }));
+    const last = items[items.length - 1];
+    const caret = last.text.length;
+    last.text += after;
+    const head: Block[] = before.trim() ? [{ ...b, text: before }] : [];
+    // Text before the caret stays as its own line; an empty line is replaced by the paste.
+    commit(normalize([...blocks.slice(0, i), ...head, ...items, ...blocks.slice(i + 1)]), { id: last.id, pos: caret });
+  };
+
+  const onPaste = (i: number, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData('text/html');
+    const plain = e.clipboardData.getData('text/plain');
+    const parsed = (html && parseHtmlList(html)) || (plain && looksLikeList(plain) ? parsePlainList(plain) : null);
+    if (!parsed?.length) return; // ordinary text: let the browser paste it
+    e.preventDefault();
+    const el = e.currentTarget;
+    setSel(null);
+    insertParsed(i, parsed, el.selectionStart, el.selectionEnd);
+  };
+
+  const setType = (i: number, type: BlockType) => {
+    if (multi) {
+      // Whole selection: all become `type`; if they already all are, back to plain text (like Docs).
+      const all = blocks.slice(selA, selB + 1).every((x) => x.type === type);
+      const t: BlockType = all ? 'text' : type;
+      commit(blocks.map((x, k) => (k < selA || k > selB ? x : { ...x, type: t, checked: t === 'check' ? !!x.checked && x.type === 'check' : undefined })), keepFocus(i));
+      return;
+    }
+    const b = blocks[i];
+    if (b.text.includes(NEWLINE) && type !== 'heading') {
+      // Several lines in one item (e.g. pasted earlier): split them into separate items of this type.
+      const items: Block[] = parsePlainList(b.text).filter((p) => p.text.trim()).map((p) => ({
+        id: newId(), text: p.text, indent: b.indent + p.indent,
+        type: type === 'check' || p.type === 'text' ? type : p.type,
+        ...(type === 'check' ? { checked: p.type === 'check' ? !!p.checked : false } : {}),
+      }));
+      if (items.length) {
+        commit(normalize([...blocks.slice(0, i), ...items, ...blocks.slice(i + 1)]), { id: items[items.length - 1].id, pos: items[items.length - 1].text.length });
+        return;
+      }
+    }
     const t = b.type === type ? 'text' : type; // pressing it again turns it off, like Docs
     commit(patch(i, { type: t, checked: t === 'check' ? !!b.checked : undefined }), { id: b.id, pos: caretOf(b.id) });
   };
   const toggleCheck = (i: number) => commit(patch(i, { checked: !blocks[i].checked }), { id: blocks[i].id, pos: caretOf(blocks[i].id) });
+  /** Ctrl+Enter on a selection: make them all checkboxes, or tick / untick them all. */
+  const toggleCheckRange = (i: number) => {
+    const part = blocks.slice(selA, selB + 1);
+    if (!part.every((x) => x.type === 'check')) return setType(i, 'check');
+    const val = !part.every((x) => x.checked);
+    commit(blocks.map((x, k) => (k < selA || k > selB ? x : { ...x, checked: val })), keepFocus(i));
+  };
 
   const onText = (i: number, el: HTMLTextAreaElement) => {
+    if (sel) setSel(null);
     const b = blocks[i];
     let text = el.value;
     let type = b.type;
@@ -254,8 +358,43 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
     const key = e.key;
 
     // Undo / redo across the whole note.
-    if (mod && !e.altKey && key.toLowerCase() === 'z') { e.preventDefault(); restore(e.shiftKey ? 'future' : 'past'); return; }
-    if (mod && !e.altKey && key.toLowerCase() === 'y') { e.preventDefault(); restore('future'); return; }
+    if (mod && !e.altKey && key.toLowerCase() === 'z') { e.preventDefault(); setSel(null); restore(e.shiftKey ? 'future' : 'past'); return; }
+    if (mod && !e.altKey && key.toLowerCase() === 'y') { e.preventDefault(); setSel(null); restore('future'); return; }
+
+    // Ctrl+. folds / unfolds the lines under this one.
+    if (mod && key === '.') { e.preventDefault(); toggleFold(i); return; }
+
+    // Ctrl+A: first selects this line's text, again selects every line.
+    if (mod && !e.shiftKey && key.toLowerCase() === 'a' && (multi || (s === 0 && end === el.value.length))) {
+      e.preventDefault();
+      setSel({ anchor: blocks[0].id, focus: blocks[blocks.length - 1].id });
+      return;
+    }
+    // Shift+Up/Down grows the selection by whole lines once it leaves this line.
+    if ((key === 'ArrowUp' || key === 'ArrowDown') && e.shiftKey && !e.altKey && !mod) {
+      const up = key === 'ArrowUp';
+      if (multi) {
+        e.preventDefault();
+        const f = idx(sel!.focus);
+        const g = up ? prevVisible(f) : nextVisible(f);
+        if (g >= 0) setSel({ anchor: sel!.anchor, focus: blocks[g].id });
+        return;
+      }
+      const atEdge = up ? !el.value.slice(0, s).includes(NEWLINE) : !el.value.slice(end).includes(NEWLINE);
+      const j = up ? prevVisible(i) : nextVisible(i);
+      if (atEdge && j >= 0) {
+        e.preventDefault();
+        setSel({ anchor: b.id, focus: blocks[j].id });
+      }
+      return;
+    }
+    if (multi) {
+      if (key === 'Escape') { e.preventDefault(); setSel(null); return; }
+      if (key === 'Backspace' || key === 'Delete') { e.preventDefault(); deleteRange(selA, selB); return; }
+      if (mod && key === 'Enter') { e.preventDefault(); toggleCheckRange(i); return; }
+      if (key.startsWith('Arrow') && !e.shiftKey) setSel(null);
+      else if (key.length === 1 && !mod && !e.altKey) setSel(null); // typing goes back to this line
+    }
 
     // Move line: Alt+Shift+↑/↓ (Google Docs), Ctrl+Shift+↑/↓ too.
     if ((key === 'ArrowUp' || key === 'ArrowDown') && e.shiftKey && (e.altKey || mod)) {
@@ -287,7 +426,8 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
         return;
       }
       const nb = { ...newBlock(type, b.indent, b.text.slice(end)), ...(type === 'check' ? { checked: false } : {}) };
-      const next = [...blocks.slice(0, i), { ...b, text: b.text.slice(0, s) }, nb, ...blocks.slice(i + 1)];
+      const after = b.collapsed && hasKids(i) ? subtreeEnd(blocks, i) : i + 1;
+      const next = [...blocks.slice(0, i), { ...b, text: b.text.slice(0, s) }, ...blocks.slice(i + 1, after), nb, ...blocks.slice(after)];
       commit(next, { id: nb.id, pos: 0 });
       return;
     }
@@ -295,10 +435,11 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
     if (key === 'Backspace' && s === 0 && end === 0) {
       if (b.type !== 'text') { e.preventDefault(); commit(patch(i, { type: 'text', checked: undefined }), { id: b.id, pos: 0 }); return; }
       if (b.indent > 0) { e.preventDefault(); doOutdent(i); return; }
-      if (i > 0) {
+      const p = prevVisible(i);
+      if (p >= 0) {
         e.preventDefault();
-        const prev = blocks[i - 1];
-        const next = normalize([...blocks.slice(0, i - 1), { ...prev, text: prev.text + b.text }, ...blocks.slice(i + 1)]);
+        const prev = blocks[p];
+        const next = normalize(blocks.flatMap((x, k) => (k === p ? [{ ...prev, text: prev.text + b.text }] : k === i ? [] : [x])));
         commit(next, { id: prev.id, pos: prev.text.length });
       }
       return;
@@ -311,16 +452,16 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
     }
 
     // Arrow keys hop between lines at the first / last line of a block.
-    if (key === 'ArrowUp' && !e.shiftKey && !e.altKey && !mod && i > 0 && !el.value.slice(0, s).includes('\n')) {
+    if (key === 'ArrowUp' && !e.shiftKey && !e.altKey && !mod && prevVisible(i) >= 0 && !el.value.slice(0, s).includes('\n')) {
       e.preventDefault();
-      const prev = blocks[i - 1];
+      const prev = blocks[prevVisible(i)];
       pendingFocus.current = { id: prev.id, pos: Math.min(s, prev.text.length) };
       setActive(prev.id);
       return;
     }
-    if (key === 'ArrowDown' && !e.shiftKey && !e.altKey && !mod && i < blocks.length - 1 && !el.value.slice(end).includes('\n')) {
+    if (key === 'ArrowDown' && !e.shiftKey && !e.altKey && !mod && nextVisible(i) >= 0 && !el.value.slice(end).includes('\n')) {
       e.preventDefault();
-      const nx = blocks[i + 1];
+      const nx = blocks[nextVisible(i)];
       const line = s - (el.value.lastIndexOf('\n', s - 1) + 1);
       pendingFocus.current = { id: nx.id, pos: Math.min(line, nx.text.length) };
       setActive(nx.id);
@@ -328,6 +469,29 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
   };
 
   const activeIdx = active ? idx(active) : -1;
+
+  // Mouse: drag across lines or Shift+click to select several.
+  const onLineMouseDown = (b: Block, e: React.MouseEvent<HTMLTextAreaElement>) => {
+    if (e.shiftKey && active && active !== b.id) {
+      e.preventDefault();
+      setSel({ anchor: sel?.anchor ?? active, focus: b.id });
+      return;
+    }
+    if (sel) setSel(null);
+    mouseFrom.current = b.id;
+  };
+  const onRowEnter = (b: Block, e: React.MouseEvent) => {
+    const from = mouseFrom.current;
+    if (!from || !(e.buttons & 1)) return;
+    if (from !== b.id) setSel({ anchor: from, focus: b.id });
+    else if (sel) setSel(null);
+  };
+  const onCopyCut = (e: React.ClipboardEvent<HTMLTextAreaElement>, cut: boolean) => {
+    if (!multi) return;
+    e.preventDefault();
+    e.clipboardData.setData('text/plain', rangeText(selA, selB));
+    if (cut) deleteRange(selA, selB);
+  };
 
   const onDragOver = (k: number, e: React.DragEvent) => {
     if (!drag) return;
@@ -347,8 +511,8 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
 
   type ToolKey = 'heading' | 'bullet' | 'number' | 'check' | 'outdent' | 'indent' | 'up' | 'down' | 'undo' | 'redo';
   const runTool = (k: ToolKey) => {
-    if (k === 'undo') return restore('past');
-    if (k === 'redo') return restore('future');
+    if (k === 'undo') { setSel(null); return restore('past'); }
+    if (k === 'redo') { setSel(null); return restore('future'); }
     const i = activeIdx;
     if (i < 0) return;
     if (k === 'outdent') doOutdent(i);
@@ -383,13 +547,15 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
           const always = k === 'undo' || k === 'redo';
           return (
             <button key={k} type="button" title={title} onMouseDown={(e) => e.preventDefault()} onClick={() => runTool(k)}
-              disabled={!always && activeIdx < 0} className={`notes-tool${at?.type === k ? ' on' : ''}`}>{label}</button>
+              disabled={!always && activeIdx < 0} className={`notes-tool${(multi ? blocks.slice(selA, selB + 1).every((x) => x.type === k) : at?.type === k) ? ' on' : ''}`}>{label}</button>
           );
         })}
       </div>
 
       <div className="notes-doc" onDragEnd={() => setDrag(null)}>
         {blocks.map((b, i) => {
+          if (hidden.has(i)) return null;
+          const kids = hasKids(i);
           const marker =
             b.type === 'bullet' ? <span className="notes-mark">{BULLETS[b.indent % BULLETS.length]}</span>
               : b.type === 'number' ? <span className="notes-mark num">{numberOf(blocks, i)}.</span>
@@ -399,13 +565,19 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
           const dropLine = drag && drag.over === i && drag.from !== i ? drag.place : null;
           return (
             <div key={b.id}
-              className={`notes-row${drag?.from === i ? ' dragging' : ''}${dropLine ? ` drop-${dropLine}` : ''}`}
+              className={`notes-row${drag?.from === i ? ' dragging' : ''}${dropLine ? ` drop-${dropLine}` : ''}${multi && i >= selA && i <= selB ? ' selected' : ''}`}
               style={{ paddingLeft: `${b.indent * 26}px` }}
+              onMouseEnter={(e) => onRowEnter(b, e)}
               onDragOver={(e) => onDragOver(i, e)} onDrop={onDrop}>
               <span className="notes-handle" draggable title="Drag to move · Alt+Shift+↑/↓"
                 onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', b.text); setDrag({ from: i, over: i, place: 'before' }); }}>
                 ⋮⋮
               </span>
+              <button type="button" className={`notes-fold${kids ? '' : ' none'}${b.collapsed ? ' closed' : ''}`} tabIndex={-1}
+                onMouseDown={(e) => e.preventDefault()} onClick={() => toggleFold(i)} disabled={!kids}
+                aria-label={b.collapsed ? 'Expand' : 'Collapse'} title={kids ? `${b.collapsed ? 'Expand' : 'Collapse'} (Ctrl+.)` : undefined}>
+                ▾
+              </button>
               {marker}
               <textarea
                 ref={(el) => { if (el) refs.current.set(b.id, el); else refs.current.delete(b.id); }}
@@ -415,10 +587,19 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
                 placeholder={blocks.length === 1 && !b.text ? 'Start typing… (Tab to indent, Alt+Shift+↑/↓ to move)' : b.type === 'heading' ? 'Heading' : ''}
                 onChange={(e) => onText(i, e.currentTarget)}
                 onKeyDown={(e) => onKey(i, e)}
+                onPaste={(e) => onPaste(i, e)}
+                onMouseDown={(e) => onLineMouseDown(b, e)}
+                onCopy={(e) => onCopyCut(e, false)}
+                onCut={(e) => onCopyCut(e, true)}
                 onFocus={() => setActive(b.id)}
                 className={`notes-line t-${b.type}${b.type === 'check' && b.checked ? ' done' : ''}`}
                 spellCheck
               />
+              {b.collapsed && kids && (
+                <button type="button" className="notes-folded" onClick={() => toggleFold(i)} title="Show hidden lines">
+                  {subtreeEnd(blocks, i) - i - 1} hidden
+                </button>
+              )}
             </div>
           );
         })}
@@ -430,6 +611,8 @@ function OutlineEditor({ blocks: incoming, onChange }: { blocks: Block[]; onChan
         }} />
       </div>
       <p style={{ fontSize: '0.7rem', color: '#6e7681', marginTop: '0.8rem', lineHeight: 1.6 }}>
+        Select several lines: drag across them, Shift+click, Shift+↑/↓ or Ctrl+A twice, then any button or shortcut applies to all ·
+        ▸ / Ctrl+. folds the lines under a line ·
         Tab / Shift+Tab indent · Alt+Shift+↑/↓ move a line · Ctrl+Shift+8 / 7 / 9 bullets / numbers / checklist · Ctrl+Enter tick ·
         type <code>- </code> <code>1. </code> <code>[] </code> <code># </code> to start a list · Shift+Enter new line in the same item · drag ⋮⋮ to move
       </p>
@@ -464,6 +647,12 @@ const CSS = `
 .notes-doc { display: flex; flex-direction: column; }
 .notes-row { display: flex; align-items: flex-start; gap: 6px; position: relative; border-radius: 4px; }
 .notes-row.dragging { opacity: 0.4; }
+.notes-row.selected { background: rgba(56,139,253,0.18); }
+.notes-row.selected .notes-line::selection { background: transparent; }
+.notes-fold { width: 16px; flex-shrink: 0; background: none; border: none; color: #8b949e; cursor: pointer; font-size: 0.75rem; line-height: 1.7rem; padding: 0; transition: transform 0.12s; }
+.notes-fold.closed { transform: rotate(-90deg); color: #c9d1d9; }
+.notes-fold.none { visibility: hidden; }
+.notes-folded { flex-shrink: 0; align-self: center; background: #21262d; border: 1px solid #30363d; border-radius: 999px; color: #8b949e; font-size: 0.68rem; padding: 0 7px; cursor: pointer; }
 .notes-row.drop-before::before, .notes-row.drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: #58a6ff; }
 .notes-row.drop-before::before { top: -1px; }
 .notes-row.drop-after::after { bottom: -1px; }
