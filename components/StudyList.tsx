@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useReadingCtx } from '@/lib/reading-position';
 import type { StudyItem, StudyTopic } from '@/lib/study-items';
 import type { NoteLine } from '@/lib/answer-notes';
 import Stars from './Stars';
@@ -452,7 +453,7 @@ function AnswerPopup({
           </button>
         </div>
 
-        <div style={{ padding: '0.9rem 1.1rem', overflowY: 'auto', flex: 1 }}>
+        <div data-reading-popup="" data-loading={loading ? '1' : '0'} style={{ padding: '0.9rem 1.1rem', overflowY: 'auto', flex: 1 }}>
           {editing ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ fontSize: '0.7rem', color: '#8b949e' }}>
@@ -700,6 +701,28 @@ export default function StudyList({
   const answerable = editCtx ? items : items.filter((it) => it.notes?.length || it.code);
   const close = useCallback(() => setOpenIdx(null), []);
 
+  // Reading position (Search / Theory): reopen the saved popup, and report which one is open.
+  const reading = useReadingCtx();
+  const pendingOpen = reading?.pendingOpen ?? null;
+  const takePendingOpen = reading?.takePendingOpen;
+  useEffect(() => {
+    if (!pendingOpen || !takePendingOpen) return;
+    const i = answerable.findIndex((it) => it.key === pendingOpen);
+    if (i < 0) return;
+    takePendingOpen();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStartEditing(false);
+    setOpenIdx(i);
+  }, [pendingOpen, takePendingOpen, answerable]);
+  const openKey = openIdx !== null ? answerable[openIdx]?.key ?? null : null;
+  const reportedKey = useRef<string | null>(null);
+  const reportOpen = reading?.reportOpen;
+  useEffect(() => {
+    if (!reportOpen || openKey === reportedKey.current) return;
+    reportOpen(openKey, reportedKey.current);
+    reportedKey.current = openKey;
+  }, [openKey, reportOpen]);
+
   const openItem = (item: StudyItem, edit = false) => {
     const i = answerable.indexOf(item);
     setStartEditing(edit || (!!editCtx && !item.notes?.length && !item.code));
@@ -724,7 +747,7 @@ export default function StudyList({
         ) : null;
 
         const custom = mode === 'inline' && renderInline ? renderInline(item) : null;
-        if (custom) return <div key={item.key}>{header}{custom}</div>;
+        if (custom) return <div key={item.key} data-item-key={item.key}>{header}{custom}</div>;
 
         const hasAnswer = !!(item.notes?.length || item.code);
         const meta = (
@@ -739,7 +762,7 @@ export default function StudyList({
 
         if (mode === 'inline' && hasAnswer) {
           return (
-            <div key={item.key}>
+            <div key={item.key} data-item-key={item.key}>
               {header}
               <div style={{ background: '#161b22', border: '1px solid #30363d', borderLeft: `3px solid ${color}`, borderRadius: '10px', marginBottom: '8px', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '12px 14px 10px' }}>
@@ -774,7 +797,7 @@ export default function StudyList({
         // Notes mode (and answer-less items in either mode): one compact row.
         const note = item.noteId ? notesCtx.notes[item.noteId] : undefined;
         return (
-          <div key={item.key}>
+          <div key={item.key} data-item-key={item.key}>
             {header}
             <div
               role="button"

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import TheoryCard from './TheoryCard'
 import SiteNav from './SiteNav'
 import StudyList, { arrange, ModeToggle, SortToggle, useListMode } from './StudyList'
+import { ReadingCtx, useReadingPosition } from '@/lib/reading-position'
 import { NoteEditsProvider } from './NoteEdits';
 import { StarFilter } from './Stars'
 import { NotesCtx, useNoteHost } from './Notes'
@@ -76,6 +77,7 @@ export default function TheoryView({
   const [editMode, setEditMode] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [mode, setMode] = useListMode()
+  const reading = useReadingPosition({ page: 'theory', signedIn: !!email })
   const [minStars, setMinStars] = useState(0)
   const [sort, setSort] = useState<'order' | 'stars'>('order')
   const [bankOff, setBankOff] = useState<Set<string>>(new Set())
@@ -244,7 +246,7 @@ export default function TheoryView({
   const totalEnabled = enabledKeys.reduce((sum, k) => sum + (itemsByTopic[k]?.length ?? 0), 0)
 
   return (
-    <NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={!!email}>
+    <ReadingCtx.Provider value={reading}><NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={!!email}>
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d1117' }}>
       {/* Sidebar */}
       <aside
@@ -497,7 +499,7 @@ export default function TheoryView({
           const isDb = topic.source === 'db'
 
           return (
-            <section key={key} id={topicId(key)} style={{ marginBottom: '3rem' }}>
+            <section key={key} id={topicId(key)} data-screen-topic={topic.label} style={{ marginBottom: '3rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: topic.color, flexShrink: 0 }} />
                 <h2 style={{ fontSize: '0.82rem', fontWeight: 700, color: topic.color, textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
@@ -562,6 +564,6 @@ export default function TheoryView({
       </main>
       {noteHost.modal}
     </div>
-    </NoteEditsProvider></NotesCtx.Provider>
+    </NoteEditsProvider></NotesCtx.Provider></ReadingCtx.Provider>
   )
 }

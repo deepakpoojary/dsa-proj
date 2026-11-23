@@ -12,6 +12,7 @@ import { useStudyProgress } from '@/lib/use-study-progress';
 import ReviewSession from './ReviewSession';
 import { useReviews } from '@/lib/use-reviews';
 import type { CatalogItem } from '@/lib/item-catalog';
+import { ReadingCtx, useReadingPosition } from '@/lib/reading-position';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -45,6 +46,11 @@ export default function SearchView({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { reviews, grade } = useReviews(signedIn);
   const [session, setSession] = useState<CatalogItem[] | null>(null);
+  // Pick up where you left off (any device): may switch to the saved search first.
+  const reading = useReadingPosition({
+    page: 'search', signedIn, q,
+    onQuery: (saved) => { setText(saved); startTransition(() => router.replace(`/search?q=${encodeURIComponent(saved)}`)); },
+  });
 
   // Remember this search so a bare /search reopens it.
   useEffect(() => {
@@ -100,7 +106,7 @@ export default function SearchView({
   const revisableChecked = groups.reduce((a, [, l]) => a + l.filter((it) => hasAnswer(it) && isDone(it)).length, 0);
 
   return (
-    <NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={signedIn}>
+    <ReadingCtx.Provider value={reading}><NotesCtx.Provider value={noteHost.value}><NoteEditsProvider signedIn={signedIn}>
       <div style={{ minHeight: '100vh', background: '#0d1117', padding: '1.5rem 1rem 4rem' }}>
         <div style={{ maxWidth: '920px', margin: '0 auto' }}>
           <SiteNav />
@@ -226,6 +232,6 @@ export default function SearchView({
         />
       )}
       {noteHost.modal}
-    </NoteEditsProvider></NotesCtx.Provider>
+    </NoteEditsProvider></NotesCtx.Provider></ReadingCtx.Provider>
   );
 }
