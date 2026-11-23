@@ -443,7 +443,7 @@ export default function ProblemsView({
           </div>
         ) : (
           Array.from(grouped.entries()).map(([topic, topicProblems]) => (
-            <section key={topic} id={topicId(topic)} style={{ marginBottom: '2.5rem' }}>
+            <section key={topic} id={topicId(topic)} data-screen-topic={`DSA · ${topic}`} style={{ marginBottom: '2.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                 <h2 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#58a6ff', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                   {topic}

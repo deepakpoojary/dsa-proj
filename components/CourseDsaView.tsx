@@ -156,7 +156,7 @@ export default function CourseDsaView({ items, email }: { items: StudyItem[]; em
               if (!list.length) return null;
               const probs = s.items.filter((i) => i.kind === 'reading');
               return (
-                <section key={s.title} id={sectionId(s.title)} style={{ marginBottom: '2rem', scrollMarginTop: '1rem' }}>
+                <section key={s.title} id={sectionId(s.title)} data-screen-topic={`DSA · ${s.title}`} style={{ marginBottom: '2rem', scrollMarginTop: '1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.5rem' }}>
                     <h2 style={{ fontSize: '0.8rem', fontWeight: 700, color: DSA_TOPIC.color, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                       {s.title}

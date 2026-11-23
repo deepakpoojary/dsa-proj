@@ -7,7 +7,7 @@
 // Each finished session is logged as a Study block in the Time tracker, so
 // time studied per day shows here and on /time.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/lib/study-session';
 import { formatDuration } from '@/lib/time-tracking';
 import { parseDayKey } from '@/lib/journal';
+import { addSeconds, currentTopic, fmtSecs, readDay, SCREEN_TIME_STORAGE_KEY } from '@/lib/screen-time';
 import { checkedToday, DAILY_CHECKS_EVENT, DAILY_CHECKS_STORAGE_KEY } from '@/lib/daily-checks';
 
 const KEY = 'study-session:v1';
@@ -69,6 +70,7 @@ export default function SessionGate() {
   const [phase, setPhase] = useState<Phase>('checking');
   const [now, setNow] = useState(0);
   const [off, setOff] = useState(false);
+  const screen = useScreenTime(pathname, !open);
 
   // Load, and follow other tabs starting / ending sessions.
   useEffect(() => {
@@ -184,13 +186,14 @@ export default function SessionGate() {
     return (
       <div className="session-countdown" style={{ position: 'fixed', right: '14px', bottom: '14px', zIndex: 950, display: 'flex', alignItems: 'center', gap: '6px' }}>
         <style>{'@media print { .session-countdown { display: none !important; } }'}</style>
+        <ScreenTime byTopic={screen} />
         <StudyStopwatch />
         <CheckedToday />
         <OffPill onTurnOn={turnOn} />
       </div>
     );
   }
-  if (phase === 'running' && session) return <Countdown left={session.endsAt - now} total={session.endsAt - session.startedAt} onExtend={() => extend(5)} onEnd={end} onTurnOff={turnOff} />;
+  if (phase === 'running' && session) return <Countdown left={session.endsAt - now} total={session.endsAt - session.startedAt} onExtend={() => extend(5)} onEnd={end} onTurnOff={turnOff} screen={screen} />;
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Study session"
@@ -288,7 +291,7 @@ function TimesUp({ session, onAgain, onMore }: { session: Session; onAgain: () =
 }
 
 // Bottom-right pill: time left, a thin progress ring of colour, +5 / end on hover-click.
-function Countdown({ left, total, onExtend, onEnd, onTurnOff }: { left: number; total: number; onExtend: () => void; onEnd: () => void; onTurnOff: () => void }) {
+function Countdown({ left, total, onExtend, onEnd, onTurnOff, screen }: { left: number; total: number; onExtend: () => void; onEnd: () => void; onTurnOff: () => void; screen: Record<string, number> }) {
   const [menu, setMenu] = useState(false);
   const urgent = left <= 60_000;
   const warn = left <= 5 * 60_000;
@@ -304,6 +307,8 @@ function Countdown({ left, total, onExtend, onEnd, onTurnOff }: { left: number; 
           <button type="button" onClick={() => { onTurnOff(); setMenu(false); }} style={{ ...menuBtn, color: '#8b949e' }} title="Stop the timer and use the app without a time limit">Turn off</button>
         </div>
       )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <ScreenTime byTopic={screen} />
       <button type="button" onClick={() => setMenu((m) => !m)} title="Time left in this session · click for options"
         style={{
           position: 'relative', overflow: 'hidden', padding: '5px 12px', borderRadius: '999px', cursor: 'pointer',
@@ -314,6 +319,7 @@ function Countdown({ left, total, onExtend, onEnd, onTurnOff }: { left: number; 
         <span style={{ position: 'absolute', left: 0, bottom: 0, height: '2px', width: `${pct}%`, background: color, transition: 'width 0.5s linear' }} />
         ⏳ {fmt(left)}
       </button>
+      </div>
       <style>{'@keyframes session-pulse { 50% { opacity: 0.55; } }'}</style>
     </div>
   );
@@ -496,5 +502,94 @@ function CheckedToday() {
       }}>
       ✓ {count} today
     </span>
+  );
+}
+
+// Counts focused-window seconds into today's per-topic screen time and returns
+// today's totals (live, and following other tabs).
+function useScreenTime(pathname: string, enabled: boolean): Record<string, number> {
+  const [byTopic, setByTopic] = useState<Record<string, number>>({});
+  const path = useRef(pathname);
+  useEffect(() => { path.current = pathname; }, [pathname]);
+
+  useEffect(() => {
+    const first = setTimeout(() => setByTopic(readDay()), 0);
+    if (!enabled) return () => clearTimeout(first);
+    let last = Date.now();
+    const t = setInterval(() => {
+      const n = Date.now();
+      // Count real elapsed time (timers are throttled in background tabs), capped so a sleep/resume isn't billed.
+      const secs = Math.min(5, Math.round((n - last) / 1000));
+      last += secs * 1000;
+      if (n - last > 5000) last = n;
+      if (secs > 0 && document.visibilityState === 'visible' && document.hasFocus()) {
+        addSeconds(currentTopic(path.current), secs);
+      }
+      setByTopic(readDay());
+    }, 1000);
+    const onStorage = (e: StorageEvent) => { if (e.key === SCREEN_TIME_STORAGE_KEY) setByTopic(readDay()); };
+    window.addEventListener('storage', onStorage);
+    return () => { clearTimeout(first); clearInterval(t); window.removeEventListener('storage', onStorage); };
+  }, [enabled]);
+
+  return byTopic;
+}
+
+// Today's focused screen time; click for the per-topic breakdown.
+function ScreenTime({ byTopic }: { byTopic: Record<string, number> }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const rows = Object.entries(byTopic).filter(([, s]) => s >= 1).sort((a, b) => b[1] - a[1]);
+  const total = rows.reduce((a, [, s]) => a + s, 0);
+  const max = rows[0]?.[1] ?? 1;
+
+  return (
+    <div ref={wrap} style={{ position: 'relative' }}>
+      {open && (
+        <div role="dialog" aria-label="Screen time today"
+          style={{
+            position: 'absolute', right: 0, bottom: 'calc(100% + 8px)', width: '260px', maxHeight: '60vh', overflowY: 'auto',
+            background: '#161b22', border: '1px solid #30363d', borderRadius: '12px', padding: '0.75rem 0.85rem',
+            boxShadow: '0 8px 28px rgba(0,0,0,0.5)',
+          }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.6rem' }}>
+            <span style={{ fontSize: '0.68rem', color: '#8b949e', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Screen time today</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#39c5cf', fontVariantNumeric: 'tabular-nums' }}>{fmtSecs(total)}</span>
+          </div>
+          {rows.length === 0 && <div style={{ fontSize: '0.78rem', color: '#6e7681' }}>Nothing yet: time counts while this window has focus.</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            {rows.map(([topic, secs]) => (
+              <div key={topic}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#c9d1d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic}</span>
+                  <span style={{ color: '#8b949e', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtSecs(secs)}</span>
+                </div>
+                <div style={{ height: '3px', borderRadius: '2px', background: '#21262d', marginTop: '3px' }}>
+                  <div style={{ height: '100%', width: `${(secs / max) * 100}%`, borderRadius: '2px', background: '#39c5cf' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        title="Screen time today (counts while this window has focus) · click for per-topic breakdown"
+        style={{
+          padding: '4px 11px', borderRadius: '999px', cursor: 'pointer', border: `1px solid ${open ? '#39c5cf88' : '#30363d'}`,
+          background: '#161b22', color: '#39c5cf', fontSize: '0.78rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+        }}>
+        🖥 {fmtSecs(total, true)}
+      </button>
+    </div>
   );
 }
