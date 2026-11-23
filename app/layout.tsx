@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import SessionGate from '@/components/SessionGate';
@@ -15,8 +15,14 @@ export const metadata: Metadata = {
     default: 'DSA Answers',
     template: '%s',
   },
-  icons: { icon: isLocal ? '/favicon-local.svg' : '/favicon.ico' },
+  icons: { icon: isLocal ? '/favicon-local.svg' : '/favicon.ico', apple: '/apple-touch-icon.png' },
+  // iPhone "Add to Home Screen": open full screen with this name.
+  appleWebApp: { capable: true, title: 'DSA', statusBarStyle: 'black-translucent' },
   description: 'All DSA problems with brute force and optimal solutions — scroll, search, learn.',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0d1117',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
