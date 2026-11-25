@@ -34,7 +34,7 @@ export default function CourseDsaView({ items, email }: { items: StudyItem[]; em
       const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as { minStars?: number; sort?: 'order' | 'stars'; hideQuizzes?: boolean };
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (typeof p.minStars === 'number') setMinStars(p.minStars);
-      if (p.sort === 'order' || p.sort === 'stars') setSort(p.sort);
+      // Sort isn't restored: lists always open in topic order.
       if (typeof p.hideQuizzes === 'boolean') setHideQuizzes(p.hideQuizzes);
     } catch {
       // ignore

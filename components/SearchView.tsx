@@ -39,7 +39,8 @@ export default function SearchView({
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useListMode();
   const [minStars, setMinStars] = useState(0);
-  const [sort, setSort] = useState<'order' | 'stars'>('stars');
+  // Always opens in topic order; the toggle can switch to importance for a while.
+  const [sort, setSort] = useState<'order' | 'stars'>('order');
   const noteHost = useNoteHost(signedIn);
   const { isDone, onToggle } = useStudyProgress(items, signedIn);
   const inputRef = useRef<HTMLInputElement>(null);

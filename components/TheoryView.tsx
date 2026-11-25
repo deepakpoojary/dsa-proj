@@ -91,7 +91,7 @@ export default function TheoryView({
       setBankOff(new Set(off))
       const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as { minStars?: number; sort?: 'order' | 'stars' }
       if (typeof prefs.minStars === 'number') setMinStars(prefs.minStars)
-      if (prefs.sort === 'stars' || prefs.sort === 'order') setSort(prefs.sort)
+      // Sort isn't restored: lists always open in topic order.
     } catch {
       // ignore
     }
