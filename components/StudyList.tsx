@@ -199,7 +199,9 @@ function CopyButton({ text, label, title, kind }: { text: string; label: string;
     setCopied(true);
   };
   return (
-    <button type="button" onClick={copy} disabled={!text} title={title} aria-label={title} data-copy={kind}
+    // stopPropagation: inside a clickable list row, copying must not open the popup.
+    <button type="button" onClick={(e) => { e.stopPropagation(); void copy(); }} onKeyDown={(e) => e.stopPropagation()}
+      disabled={!text} title={title} aria-label={title} data-copy={kind}
       style={{
         background: 'none', border: '1px solid #30363d', borderRadius: '6px', color: copied ? '#3fb950' : '#8b949e',
         fontSize: '0.72rem', padding: '2px 8px', cursor: text ? 'pointer' : 'default', whiteSpace: 'nowrap', lineHeight: 1.4,
@@ -814,7 +816,12 @@ export default function StudyList({
               <DoneBox item={item} done={done} canTrack={canTrack} onToggle={onToggle} color={color} />
               <span style={numStyle}>{idx + 1}.</span>
               {item.kind && <span style={{ fontSize: '0.72rem' }} title={item.kind}>{KIND_ICON[item.kind] ?? '•'}</span>}
-              <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', color: done ? '#8b949e' : '#e6edf3', lineHeight: 1.45 }}>{item.title}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', color: done ? '#8b949e' : '#e6edf3', lineHeight: 1.45 }}>
+                {item.title}
+                <span style={{ marginLeft: '8px', display: 'inline-block', verticalAlign: 'middle' }}>
+                  <CopyButton text={item.title} label="⧉" title="Copy question" kind="question" />
+                </span>
+              </span>
               {meta}
               {hasAnswer || editCtx ? (
                 <span style={{ fontSize: '0.7rem', color: '#d29922', border: '1px solid rgba(210,153,34,0.45)', background: 'rgba(210,153,34,0.1)', opacity: hasAnswer ? 1 : 0.6, borderRadius: '999px', padding: '1px 8px', whiteSpace: 'nowrap' }}>
